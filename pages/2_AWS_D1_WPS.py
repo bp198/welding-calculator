@@ -353,299 +353,472 @@ For **exposed bare unpainted weathering steel** applications:
 **Exceptions (5.6.3.1 & 5.6.3.2):** Single-pass groove welds and small single-pass fillet welds (SMAW ≤ 1/4 in, SAW/GMAW/FCAW ≤ 5/16 in) may use any Group II filler metal from Table 5.7.
         """)
 
+
+# ── Standards Index (sidebar) ────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### 📚 Standards Index")
+    st.caption("Upload PDFs to enable clause-level AI answers.")
+
+    try:
+        from rag_engine import WeldingRAG
+        rag = WeldingRAG()
+
+        count = rag.index_count()
+        if count:
+            st.success(f"✅ {count:,} clauses indexed")
+        else:
+            st.warning("No standards indexed yet.")
+
+        uploaded_pdfs = st.file_uploader(
+            "Upload standard PDFs",
+            type=["pdf", "txt"],
+            accept_multiple_files=True,
+            help="AWS D1.1, EN ISO 15614, EN 1011, etc. Never committed to git.",
+        )
+
+        if uploaded_pdfs and st.button("🔍 Index uploaded PDFs", use_container_width=True):
+            import tempfile, os
+            os.makedirs("standards", exist_ok=True)
+            saved_paths = []
+            for f in uploaded_pdfs:
+                tmp_path = f"standards/{f.name}"
+                with open(tmp_path, "wb") as fp:
+                    fp.write(f.read())
+                saved_paths.append(tmp_path)
+
+            log = st.empty()
+            messages = []
+            def progress(msg):
+                messages.append(msg)
+                log.markdown("\\n".join(messages))
+
+            with st.spinner("Indexing…"):
+                added = rag.build_index(saved_paths, progress_cb=progress)
+            st.success(f"Done — {added} new chunks added.")
+            st.rerun()
+
+        if count and st.button("🗑️ Clear index", use_container_width=True):
+            rag.build_index([], reset=True)
+            st.rerun()
+
+    except ImportError:
+        st.info("Install RAG packages to enable clause retrieval:\\n`pip install pymupdf chromadb sentence-transformers`")
+
 with tab9:
     st.subheader("🤖 AI Welding Assistant")
-    st.markdown("Answer the questions below and the AI will interpret the AWS D1.1 requirements for your specific situation.")
+    st.markdown(
+        "Fill in your welding parameters, then chat with the AI. "
+        "When standard PDFs are indexed, answers are grounded in real clauses."
+    )
     st.divider()
 
+    # ── RAG availability check ────────────────────────────────────────────────
+    try:
+        from rag_engine import WeldingRAG
+        _rag = WeldingRAG()
+        RAG_READY = _rag.is_ready()
+    except Exception:
+        _rag      = None
+        RAG_READY = False
+
+    if RAG_READY:
+        st.success(f"📚 Standards index active — {_rag.index_count():,} clauses loaded.", icon="✅")
+    else:
+        st.info(
+            "💡 No standards indexed yet. Answers use hardcoded table data only. "
+            "Upload PDFs in the sidebar to unlock full clause retrieval.",
+            icon="ℹ️",
+        )
+
+    st.divider()
+
+    # ── Parameter inputs ──────────────────────────────────────────────────────
     col1, col2 = st.columns(2)
-
     with col1:
-        process = st.selectbox("Welding Process:",
-            ["SMAW", "SAW", "GMAW", "FCAW"])
-
-        position = st.selectbox("Welding Position:",
-            ["Flat", "Horizontal", "Vertical", "Overhead"])
-
-        weld_type = st.selectbox("Weld Type:",
-            ["Fillet", "Groove", "Root Pass"])
-
+        process   = st.selectbox("Welding Process:",  ["SMAW", "SAW", "GMAW", "FCAW"])
+        position  = st.selectbox("Welding Position:", ["Flat", "Horizontal", "Vertical", "Overhead"])
+        weld_type = st.selectbox("Weld Type:",        ["Fillet", "Groove", "Root Pass"])
     with col2:
-        base_metal = st.selectbox("Base Metal:",
-            ["ASTM A36", "ASTM A572 Gr.50", "ASTM A572 Gr.60",
-             "ASTM A588", "ASTM A709 Gr.50", "ASTM A992",
-             "API 5L Gr.B", "Other"])
-
-        thickness = st.number_input("Material Thickness (mm):",
-            min_value=1.0, max_value=200.0, value=12.0, step=0.5)
-
-        electrode = st.text_input("Electrode/Wire (optional):",
-            placeholder="e.g. E7018, ER70S-6")
+        base_metal = st.selectbox("Base Metal:", [
+            "ASTM A36", "ASTM A572 Gr.50", "ASTM A572 Gr.60",
+            "ASTM A588", "ASTM A709 Gr.50", "ASTM A992",
+            "API 5L Gr.B", "Other"
+        ])
+        thickness = st.number_input("Material Thickness (mm):", min_value=1.0, max_value=200.0, value=12.0, step=0.5)
+        electrode = st.text_input("Electrode/Wire (optional):", placeholder="e.g. E7018, ER70S-6")
 
     col3, col4 = st.columns(2)
     with col3:
-        ambient_temp = st.number_input("Ambient Temperature (°C):",
-            min_value=-50.0, max_value=50.0, value=20.0, step=1.0)
-        humidity = st.selectbox("Humidity/Weather Condition:",
-            ["Normal (indoor)", "High humidity", "Rain/Snow nearby",
-             "Strong wind", "Extreme cold (below 0°C)", "Extreme heat (above 35°C)"])
+        ambient_temp = st.number_input("Ambient Temperature (°C):", min_value=-50.0, max_value=50.0, value=20.0, step=1.0)
+        humidity     = st.selectbox("Humidity/Weather Condition:", [
+            "Normal (indoor)", "High humidity", "Rain/Snow nearby",
+            "Strong wind", "Extreme cold (below 0°C)", "Extreme heat (above 35°C)"
+        ])
     with col4:
-        location = st.selectbox("Welding Location:",
-            ["Indoor — controlled environment",
-             "Outdoor — sheltered",
-             "Outdoor — exposed",
-             "Offshore / marine environment",
-             "Underground"])
-        criticality = st.selectbox("Structure Criticality:",
-            ["Standard structure",
-             "Critical structure (bridges, pressure vessels)",
-             "Seismic zone",
-             "Impact/dynamic loading"])
+        location    = st.selectbox("Welding Location:", [
+            "Indoor — controlled environment", "Outdoor — sheltered",
+            "Outdoor — exposed", "Offshore / marine environment", "Underground"
+        ])
+        criticality = st.selectbox("Structure Criticality:", [
+            "Standard structure",
+            "Critical structure (bridges, pressure vessels)",
+            "Seismic zone",
+            "Impact/dynamic loading"
+        ])
 
-    additional = st.text_area("Describe your full situation in detail:",
-        placeholder="e.g. I am welding a structural beam connection outdoors in winter. Temperature is -20°C. Wind is present. The structure is a bridge...",
-        height=120)
-
+    additional = st.text_area(
+        "Describe your full situation in detail:",
+        placeholder="e.g. Welding a structural beam connection outdoors in winter. -20°C, wind present. Bridge structure…",
+        height=100
+    )
     st.divider()
 
-    if st.button("🤖 Get AI Interpretation", use_container_width=True):
-        with st.spinner("🔍 AI is analyzing your welding situation..."):
+    # ── AWS D1.1 hardcoded reference data (unchanged) ─────────────────────────
+    smaw_rules = {
+        "Flat":       {"Fillet":    {"max_electrode": "5/16 in [8.0 mm]", "exception": "Except root pass"},
+                       "Groove":    {"max_electrode": "1/4 in [6.4 mm]",  "exception": "Except root pass"},
+                       "Root Pass": {"max_electrode": "3/16 in [4.8 mm]", "exception": ""}},
+        "Horizontal": {"Fillet":    {"max_electrode": "1/4 in [6.4 mm]",  "exception": ""},
+                       "Groove":    {"max_electrode": "3/16 in [4.8 mm]", "exception": ""}},
+        "Vertical":   {"All":       {"max_electrode": "3/16 in [4.8 mm]", "exception": "5/32 in [4.0 mm] for EXX14 and low-hydrogen electrodes"}},
+        "Overhead":   {"All":       {"max_electrode": "3/16 in [4.8 mm]", "exception": "5/32 in [4.0 mm] for EXX14 and low-hydrogen electrodes"}},
+    }
+    saw_rules = {
+        "max_electrode": "1/4 in [6.4 mm]", "positions": "Flat and Horizontal only",
+        "current_fillet": "1000A max (single), 1200A max (parallel), Unlimited (multiple)",
+        "current_groove_root_with_opening": "600A max (single), 700A max (parallel)",
+        "current_groove_root_no_opening": "900A max (single)",
+        "current_groove_fill": "1200A max (single)",
+    }
+    gmaw_rules = {
+        "max_electrode": "0.0625 in [1.6 mm]",
+        "note": "GMAW-S is NOT prequalified. Must use CV power source.",
+        "min_current": "190A for 0.030in | 210A for 0.035in | 230A for 0.040in | 260A for 0.045in | 300A for 0.0625in",
+    }
+    fcaw_rules = {
+        "flat_horizontal_T_less_10mm": "0.030 in [0.8 mm] min (FCAW), No min (GMAW Cored)",
+        "flat_horizontal_T_more_10mm": "0.045 in [1 mm] min, 1/8 in [3.2 mm] max (FCAW)",
+        "vertical_T_more_10mm": "3/32 in [2.4 mm] max",
+        "overhead_T_more_10mm": "5/64 in [2.2 mm] max",
+    }
+    bead_limits = {
+        "SMAW": {
+            "root_bead":          {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
+            "fill_cap":           "3/16 in [5 mm] all positions",
+            "single_pass_fillet": {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
+        },
+        "SAW": {
+            "root_bead":          "Unlimited (Flat & Horizontal only)",
+            "fill_cap_single":    "1/4 in [6 mm] max",
+            "fill_cap_multiple":  "Unlimited",
+            "single_pass_fillet": {"single": "5/16 in [8 mm]", "parallel": "5/16 in [8 mm]", "multiple": "1/2 in [12 mm]"},
+        },
+        "GMAW": {
+            "root_bead":          {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
+            "fill_cap":           "1/4 in [6 mm] all positions",
+            "single_pass_fillet": {"Flat": "1/2 in [12 mm]", "Horizontal": "3/8 in [10 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
+        },
+        "FCAW": {
+            "root_bead":          {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
+            "fill_cap":           "1/4 in [6 mm] all positions",
+            "single_pass_fillet": {"Flat": "1/2 in [12 mm]", "Horizontal": "3/8 in [10 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
+        },
+    }
+    preheat_rules = {
+        "ASTM A36": {
+            "category": "A (SMAW non-LH) or B (SMAW LH, SAW, GMAW, FCAW)",
+            "Cat_A": {"up_to_19mm": "32°F [0°C]",  "19_to_38mm": "150°F [65°C]",  "38_to_65mm": "225°F [110°C]", "over_65mm": "300°F [150°C]"},
+            "Cat_B": {"up_to_19mm": "32°F [0°C]",  "19_to_38mm": "50°F [10°C]",   "38_to_65mm": "150°F [65°C]",  "over_65mm": "225°F [110°C]"},
+        },
+        "ASTM A572 Gr.50": {
+            "category": "B",
+            "Cat_B": {"up_to_19mm": "32°F [0°C]",  "19_to_38mm": "50°F [10°C]",   "38_to_65mm": "150°F [65°C]",  "over_65mm": "225°F [110°C]"},
+        },
+        "ASTM A572 Gr.60": {
+            "category": "C",
+            "Cat_C": {"up_to_19mm": "50°F [10°C]", "19_to_38mm": "150°F [65°C]",  "38_to_65mm": "225°F [110°C]", "over_65mm": "300°F [150°C]"},
+        },
+    }
 
-            from groq import Groq
-            client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+    # ── Resolve table data for current inputs ─────────────────────────────────
+    if process == "SMAW":
+        wt   = weld_type if weld_type in smaw_rules.get(position, {}) else "All"
+        rule = smaw_rules.get(position, {}).get(wt, smaw_rules.get(position, {}).get("All", {}))
+        process_data = (
+            f"Max electrode diameter: {rule.get('max_electrode', 'N/A')}\n"
+            f"Exception: {rule.get('exception', 'None')}"
+        )
+    elif process == "SAW":
+        r = saw_rules
+        process_data = (
+            f"Max electrode diameter: {r['max_electrode']}\n"
+            f"Approved positions: {r['positions']}\n"
+            f"Current — fillet: {r['current_fillet']}\n"
+            f"Current — groove root (with opening): {r['current_groove_root_with_opening']}\n"
+            f"Current — groove root (no opening): {r['current_groove_root_no_opening']}\n"
+            f"Current — groove fill: {r['current_groove_fill']}"
+        )
+    elif process == "GMAW":
+        r = gmaw_rules
+        process_data = (
+            f"Max electrode diameter: {r['max_electrode']}\n"
+            f"Note: {r['note']}\n"
+            f"Minimum current by wire size: {r['min_current']}"
+        )
+    elif process == "FCAW":
+        r = fcaw_rules
+        process_data = (
+            f"Flat/Horizontal, t < 10 mm: {r['flat_horizontal_T_less_10mm']}\n"
+            f"Flat/Horizontal, t ≥ 10 mm: {r['flat_horizontal_T_more_10mm']}\n"
+            f"Vertical, t ≥ 10 mm: {r['vertical_T_more_10mm']}\n"
+            f"Overhead, t ≥ 10 mm: {r['overhead_T_more_10mm']}"
+        )
 
-            # ── Pull exact data from our tables ──
-            smaw_rules = {
-                "Flat": {
-                    "Fillet": {"max_electrode": "5/16 in [8.0 mm]", "exception": "Except root pass"},
-                    "Groove": {"max_electrode": "1/4 in [6.4 mm]", "exception": "Except root pass"},
-                    "Root Pass": {"max_electrode": "3/16 in [4.8 mm]", "exception": ""},
-                },
-                "Horizontal": {
-                    "Fillet": {"max_electrode": "1/4 in [6.4 mm]", "exception": ""},
-                    "Groove": {"max_electrode": "3/16 in [4.8 mm]", "exception": ""},
-                },
-                "Vertical": {"All": {"max_electrode": "3/16 in [4.8 mm]", "exception": "5/32 in [4.0 mm] for EXX14 and low-hydrogen electrodes"}},
-                "Overhead": {"All": {"max_electrode": "3/16 in [4.8 mm]", "exception": "5/32 in [4.0 mm] for EXX14 and low-hydrogen electrodes"}},
-            }
+    bl = bead_limits.get(process, {})
+    bead_data_lines = []
+    if "root_bead" in bl:
+        rb = bl["root_bead"]
+        bead_data_lines.append(f"Root bead max: {rb[position] if isinstance(rb, dict) else rb}")
+    if "fill_cap" in bl:
+        bead_data_lines.append(f"Fill/cap bead max: {bl['fill_cap']}")
+    if "fill_cap_single" in bl:
+        bead_data_lines.append(f"Fill/cap single-wire max: {bl['fill_cap_single']}")
+        bead_data_lines.append(f"Fill/cap multi-wire max:  {bl['fill_cap_multiple']}")
+    if "single_pass_fillet" in bl:
+        spf = bl["single_pass_fillet"]
+        bead_data_lines.append(f"Single-pass fillet max: {spf[position] if isinstance(spf, dict) else spf.get('single', spf)}")
+    bead_data = "\n".join(bead_data_lines)
 
-            saw_rules = {
-                "max_electrode": "1/4 in [6.4 mm]",
-                "positions": "Flat and Horizontal only",
-                "current_fillet": "1000A max (single), 1200A max (parallel), Unlimited (multiple)",
-                "current_groove_root_with_opening": "600A max (single), 700A max (parallel)",
-                "current_groove_root_no_opening": "900A max (single)",
-                "current_groove_fill": "1200A max (single)",
-            }
+    thickness_cat = (
+        "up_to_19mm"  if thickness <= 19 else
+        "19_to_38mm"  if thickness <= 38 else
+        "38_to_65mm"  if thickness <= 65 else
+        "over_65mm"
+    )
+    ph_metal = preheat_rules.get(base_metal)
+    if ph_metal:
+        if "Cat_B" in ph_metal:   cat_key = "Cat_B"
+        elif "Cat_A" in ph_metal: cat_key = "Cat_A"
+        else:                     cat_key = list(ph_metal.keys())[-1]
+        ph_temp      = ph_metal[cat_key].get(thickness_cat, "N/A")
+        preheat_data = (
+            f"Steel category: {ph_metal['category']}\n"
+            f"Min preheat for {thickness_cat.replace('_',' ')}: {ph_temp}"
+        )
+    else:
+        preheat_data = "Refer to Table 5.11 — base metal not in prequalified list."
 
-            gmaw_rules = {
-                "max_electrode": "0.0625 in [1.6 mm]",
-                "note": "GMAW-S is NOT prequalified. Must use CV power source.",
-                "min_current": "190A for 0.030in | 210A for 0.035in | 230A for 0.040in | 260A for 0.045in | 300A for 0.0625in",
-            }
+    situation_block = f"""
+WELDING JOB PARAMETERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Process          : {process}
+Position         : {position}
+Weld type        : {weld_type}
+Base metal       : {base_metal}
+Thickness        : {thickness} mm  ({thickness_cat.replace('_',' ')})
+Electrode / wire : {electrode if electrode else 'not specified'}
+Ambient temp     : {ambient_temp}°C
+Weather          : {humidity}
+Location         : {location}
+Criticality      : {criticality}
+Additional notes : {additional if additional else 'none'}
 
-            fcaw_rules = {
-                "flat_horizontal_T_less_10mm": "0.030 in [0.8 mm] min (FCAW), No min (GMAW Cored)",
-                "flat_horizontal_T_more_10mm": "0.045 in [1 mm] min, 1/8 in [3.2 mm] max (FCAW)",
-                "vertical_T_more_10mm": "3/32 in [2.4 mm] max",
-                "overhead_T_more_10mm": "5/64 in [2.2 mm] max",
-            }
-
-            bead_limits = {
-                "SMAW": {
-                    "root_bead": {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
-                    "fill_cap": "3/16 in [5 mm] all positions",
-                    "single_pass_fillet": {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
-                },
-                "SAW": {
-                    "root_bead": "Unlimited (Flat & Horizontal only)",
-                    "fill_cap_single": "1/4 in [6 mm] max",
-                    "fill_cap_multiple": "Unlimited",
-                    "single_pass_fillet": {"single": "5/16 in [8 mm]", "parallel": "5/16 in [8 mm]", "multiple": "1/2 in [12 mm]"},
-                },
-                "GMAW": {
-                    "root_bead": {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
-                    "fill_cap": "1/4 in [6 mm] all positions",
-                    "single_pass_fillet": {"Flat": "1/2 in [12 mm]", "Horizontal": "3/8 in [10 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
-                },
-                "FCAW": {
-                    "root_bead": {"Flat": "3/8 in [10 mm]", "Horizontal": "5/16 in [8 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
-                    "fill_cap": "1/4 in [6 mm] all positions",
-                    "single_pass_fillet": {"Flat": "1/2 in [12 mm]", "Horizontal": "3/8 in [10 mm]", "Vertical": "1/2 in [12 mm]", "Overhead": "5/16 in [8 mm]"},
-                },
-            }
-
-            preheat_rules = {
-                "ASTM A36": {
-                    "category": "A (SMAW non-LH) or B (SMAW LH, SAW, GMAW, FCAW)",
-                    "Cat_A": {
-                        "up_to_19mm": "32°F [0°C] min",
-                        "19_to_38mm": "150°F [65°C] min",
-                        "38_to_65mm": "225°F [110°C] min",
-                        "over_65mm": "300°F [150°C] min",
-                    },
-                    "Cat_B": {
-                        "up_to_19mm": "32°F [0°C] min",
-                        "19_to_38mm": "50°F [10°C] min",
-                        "38_to_65mm": "150°F [65°C] min",
-                        "over_65mm": "225°F [110°C] min",
-                    },
-                },
-                "ASTM A572 Gr.50": {
-                    "category": "B",
-                    "Cat_B": {
-                        "up_to_19mm": "32°F [0°C] min",
-                        "19_to_38mm": "50°F [10°C] min",
-                        "38_to_65mm": "150°F [65°C] min",
-                        "over_65mm": "225°F [110°C] min",
-                    },
-                },
-                "ASTM A572 Gr.60": {
-                    "category": "C",
-                    "Cat_C": {
-                        "up_to_19mm": "50°F [10°C] min",
-                        "19_to_38mm": "150°F [65°C] min",
-                        "38_to_65mm": "225°F [110°C] min",
-                        "over_65mm": "300°F [150°C] min",
-                    },
-                },
-            }
-
-            # ── Get relevant data for this situation ──
-            process_data = ""
-            if process == "SMAW":
-                wt = weld_type if weld_type in smaw_rules.get(position, {}) else "All"
-                rule = smaw_rules.get(position, {}).get(wt, smaw_rules.get(position, {}).get("All", {}))
-                process_data = f"Max electrode diameter: {rule.get('max_electrode', 'N/A')} | Exception: {rule.get('exception', 'None')}"
-            elif process == "SAW":
-                process_data = str(saw_rules)
-            elif process == "GMAW":
-                process_data = str(gmaw_rules)
-            elif process == "FCAW":
-                process_data = str(fcaw_rules)
-
-            bead_data = str(bead_limits.get(process, {}))
-            preheat_data = str(preheat_rules.get(base_metal, "Refer to Table 5.11 for specific requirements"))
-
-            # ── Determine thickness category ──
-            if thickness <= 19:
-                thickness_cat = "up_to_19mm"
-            elif thickness <= 38:
-                thickness_cat = "19_to_38mm"
-            elif thickness <= 65:
-                thickness_cat = "38_to_65mm"
-            else:
-                thickness_cat = "over_65mm"
-
-            context = f"""
-You are a strict and precise expert welding engineer specializing in AWS D1.1/D1.1M:2025.
-You MUST use ONLY the exact data provided below from the official AWS D1.1 tables.
-Do NOT use general knowledge — only use the numbers from the tables provided.
-
-═══════════════════════════════════════════
-USER'S WELDING SITUATION
-═══════════════════════════════════════════
-- Welding Process: {process}
-- Welding Position: {position}
-- Weld Type: {weld_type}
-- Base Metal: {base_metal}
-- Material Thickness: {thickness} mm (Category: {thickness_cat})
-- Electrode/Wire: {electrode if electrode else "Not specified"}
-- Ambient Temperature: {ambient_temp}°C
-- Weather/Humidity: {humidity}
-- Welding Location: {location}
-- Structure Criticality: {criticality}
-- Additional Description: {additional if additional else "None provided"}
-
-═══════════════════════════════════════════
-EXACT AWS D1.1 TABLE DATA FOR THIS SITUATION
-═══════════════════════════════════════════
-PROCESS REQUIREMENTS (from Tables 5.1-5.4):
+AWS D1.1 TABLE DATA (hardcoded)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROCESS LIMITS (Tables 5.1–5.4):
 {process_data}
 
-BEAD THICKNESS LIMITS (from Tables 5.1-5.4):
+BEAD THICKNESS LIMITS (Tables 5.1–5.4):
 {bead_data}
 
-PREHEAT REQUIREMENTS (from Table 5.11):
+PREHEAT (Table 5.11):
 {preheat_data}
-Thickness category for this job: {thickness_cat}
+""".strip()
 
-═══════════════════════════════════════════
-PLEASE PROVIDE YOUR ANALYSIS WITH THESE SECTIONS:
-═══════════════════════════════════════════
+    # ── Build system prompt (RAG-aware) ───────────────────────────────────────
+    rag_instruction = (
+        "RETRIEVED STANDARD CLAUSES are provided above the user's question. "
+        "These are verbatim excerpts from the actual standards. "
+        "Prioritise these clauses over your general training knowledge. "
+        "Always cite the source name when referencing a retrieved clause."
+        if RAG_READY else
+        "No standard PDFs are indexed yet. Use only the hardcoded table data "
+        "provided in the job parameters. If a question goes beyond that data, "
+        "say so clearly and cite the correct clause reference for the user to check."
+    )
 
-1. ⚡ ELECTRODE/WIRE REQUIREMENTS
-   - State the EXACT maximum diameter from the table data above
-   - Mention any exceptions
+    SYSTEM_PROMPT = f"""You are a senior International Welding Engineer (IWE) with 20 years of hands-on \
+experience in structural steel fabrication. You have deep expertise in AWS D1.1/D1.1M:2025, \
+EN ISO 15614, EN 1011, and practical shop-floor and field welding.
 
-2. 🔌 CURRENT REQUIREMENTS
-   - Refer to manufacturer recommendations
-   - Any process-specific limits
+YOUR BEHAVIOUR RULES:
+1. Cite exact clause numbers or table references for every requirement you state.
+2. When table data or retrieved clauses are provided, use those exact values. Never invent numbers.
+3. When data is absent, say so clearly and give the correct clause reference to consult.
+4. Flag safety-critical issues with ⚠️ and explain WHY they matter, not just WHAT they are. \
+For SMAW specifically: wind does NOT disrupt shielding gas (SMAW has none) — \
+wind accelerates heat loss from preheated steel, increasing hydrogen cracking risk. \
+Never confuse SMAW wind risk with GMAW/FCAW shielding gas disruption.
+5. Give practical advice — not just "comply with the standard" but HOW to comply on the job.
+6. If a question is outside AWS D1.1 scope (e.g. EN ISO, API), answer from your IWE knowledge \
+and label it clearly as outside D1.1 scope.
+7. Be direct and opinionated. If conditions are dangerous, say so firmly.
+8. Write like an experienced engineer advising a colleague — structured but not bureaucratic.
+9. Before giving a Go/No-Go recommendation, explicitly state: \
+the minimum preheat required, the current ambient temperature, \
+the difference between them, and whether welding can start RIGHT NOW \
+or only after preheating. Never give a Conditional GO if ambient \
+temperature is below the minimum preheat — that is a NO-GO until \
+the steel is physically heated to the minimum temperature.
 
-3. 📏 BEAD THICKNESS LIMITS
-   - State EXACT root bead limit from table data
-   - State EXACT fill and cap bead limit
-   - State EXACT single pass fillet size limit
+REGARDING RETRIEVED CLAUSES:
+{rag_instruction}
 
-4. 🌡️ PREHEAT REQUIREMENTS
-   - State the EXACT minimum preheat temperature from table data for this thickness
-   - ⚠️ IMPORTANT: The ambient temperature is {ambient_temp}°C
-   - If ambient temp is BELOW the minimum preheat → give a STRONG WARNING
-   - If ambient temp is below 0°C → warn about hydrogen cracking risk
-   - State interpass temperature requirements
+THE WELDING JOB YOU ARE ADVISING ON:
+{situation_block}
 
-5. 🌍 ENVIRONMENTAL ASSESSMENT
-   - Analyze the impact of: {humidity}, {location}, ambient temp {ambient_temp}°C
-   - Give specific recommendations for these conditions
-   - If conditions are severe → recommend additional precautions
-   - Consider impact on: electrode storage, moisture, wind, visibility
-
-6. 🏗️ STRUCTURE CRITICALITY ASSESSMENT
-   - Consider that this is a: {criticality}
-   - Give additional requirements or precautions for this criticality level
-   - Mention any additional NDT or inspection requirements
-
-7. ⚠️ WARNINGS & CRITICAL POINTS
-   - List all critical warnings specific to this situation
-   - Be especially strict about environmental conditions
-   - Mention hydrogen cracking risk if relevant
-
-8. ✅ SUMMARY & RECOMMENDATIONS
-   - Clear action list for the welder
-   - Most critical points to remember
-   - Go/No-Go recommendation based on current conditions
-
-Be direct, specific, and safety-focused. Use the EXACT numbers from the table data provided.
+The user will now ask questions about this job. Answer specifically in context of the parameters above.
 """
 
+    # ── Session state ─────────────────────────────────────────────────────────
+    param_key = (process, position, weld_type, base_metal, thickness,
+                 electrode, ambient_temp, humidity, location, criticality, additional, RAG_READY)
+
+    if "ai_chat_history" not in st.session_state:
+        st.session_state.ai_chat_history = []
+        st.session_state.ai_param_key    = param_key
+
+    if st.session_state.ai_param_key != param_key:
+        st.session_state.ai_chat_history = []
+        st.session_state.ai_param_key    = param_key
+        st.info("⚙️ Parameters changed — conversation reset.")
+
+    # ── Quick-start buttons ───────────────────────────────────────────────────
+    st.markdown("**Quick analysis — or type your own question below:**")
+    qcol1, qcol2, qcol3 = st.columns(3)
+    quick_prompt = None
+    if qcol1.button("📋 Full job analysis",       use_container_width=True):
+        quick_prompt = (
+            "Give me a full analysis of this welding job: electrode limits, bead thickness limits, "
+            "preheat requirements, environmental risks, and a go/no-go recommendation."
+        )
+    if qcol2.button("🌡️ Preheat & hydrogen risk", use_container_width=True):
+        quick_prompt = (
+            "Focus on preheat and hydrogen cracking risk for this job. "
+            "Is the ambient temperature acceptable? What precautions do I need?"
+        )
+    if qcol3.button("⚠️ Environmental risks",     use_container_width=True):
+        quick_prompt = (
+            "What are the main environmental risks for this welding job "
+            "and what specific precautions should I take on site?"
+        )
+
+    # ── Chat display ──────────────────────────────────────────────────────────
+    for msg in st.session_state.ai_chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # ── Input ─────────────────────────────────────────────────────────────────
+    user_input = st.chat_input("Ask anything about this welding job…")
+    if quick_prompt and not user_input:
+        user_input = quick_prompt
+
+    if user_input:
+        st.session_state.ai_chat_history.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # ── RAG retrieval ─────────────────────────────────────────────────────
+        rag_context = ""
+        if RAG_READY and _rag:
+            # Build a rich search query from the user question + job parameters
+            search_query = (
+                f"{user_input} "
+                f"{process} {position} {weld_type} {base_metal} "
+                f"{thickness}mm preheat electrode bead"
+            )
             try:
-                response = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a strict welding engineering expert. Always use exact numbers from the provided AWS D1.1 table data. Never make up numbers. Always prioritize safety especially in harsh environmental conditions."
-                        },
-                        {
-                            "role": "user",
-                            "content": context
-                        }
-                    ],
-                    max_tokens=2000,
-                    temperature=0.1,
-                )
-
-                result = response.choices[0].message.content
-
-                st.success("✅ AI Analysis Complete!")
-                st.divider()
-                st.markdown(result)
-                st.divider()
-                st.caption("⚠️ This AI interpretation is for reference only. Always verify against the official AWS D1.1/D1.1M:2025 standard before production welding.")
-
+                chunks      = _rag.query(search_query, n=5)
+                rag_context = _rag.format_context(chunks) if chunks else ""
             except Exception as e:
-                st.error(f"❌ Error connecting to AI: {str(e)}")
-                st.info("Please check your API key in .streamlit/secrets.toml")
+                rag_context = f"(RAG retrieval failed: {e})"
+
+        # Build messages array: system + trimmed history
+        # Keep last 10 messages max to avoid context window errors
+        MAX_HISTORY = 10
+        trimmed_history = st.session_state.ai_chat_history[-MAX_HISTORY:]
+
+        messages_for_api = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        if rag_context:
+            last_user = trimmed_history[-1]
+            prior     = trimmed_history[:-1]
+            for m in prior:
+                messages_for_api.append({"role": m["role"], "content": m["content"]})
+            messages_for_api.append({
+                "role":    "system",
+                "content": f"RETRIEVED STANDARD CLAUSES FOR THIS QUESTION:\n\n{rag_context}",
+            })
+            messages_for_api.append({"role": "user", "content": last_user["content"]})
+        else:
+            for m in trimmed_history:
+                messages_for_api.append({"role": m["role"], "content": m["content"]})
+
+        # Inject retrieved clauses as a system-level context message
+        # (placed just before the latest user message for maximum attention)
+        history_to_send = list(st.session_state.ai_chat_history)
+        if rag_context:
+            # Insert retrieved context right before the last user message
+            last_user = history_to_send.pop()
+            messages_for_api += [{"role": m["role"], "content": m["content"]}
+                                  for m in history_to_send[:-0] or history_to_send]
+            messages_for_api.append({
+                "role":    "system",
+                "content": f"RETRIEVED STANDARD CLAUSES FOR THIS QUESTION:\n\n{rag_context}",
+            })
+            messages_for_api.append({"role": "user", "content": last_user["content"]})
+        else:
+            messages_for_api += [{"role": m["role"], "content": m["content"]}
+                                  for m in history_to_send]
+
+        # ── API call ──────────────────────────────────────────────────────────
+        with st.chat_message("assistant"):
+            with st.spinner("Analysing…"):
+                try:
+                    from groq import Groq
+                    client   = Groq(api_key=st.secrets["GROQ_API_KEY"])
+                    response = client.chat.completions.create(
+                        model       = "llama-3.3-70b-versatile",
+                        messages    = messages_for_api,
+                        max_tokens  = 2000,
+                        temperature = 0.15,
+                    )
+                    reply = response.choices[0].message.content
+                    st.markdown(reply)
+                    st.session_state.ai_chat_history.append({"role": "assistant", "content": reply})
+
+                    # Show which clauses were used (expandable, not intrusive)
+                    if rag_context and chunks:
+                        with st.expander(f"📖 {len(chunks)} standard clauses retrieved", expanded=False):
+                            for i, c in enumerate(chunks, 1):
+                                st.caption(f"**[{i}] {c['source']}** — relevance {1-c['distance']:.0%}")
+                                st.text(c["text"][:400] + ("…" if len(c["text"]) > 400 else ""))
+
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    # ── Reset button ──────────────────────────────────────────────────────────
+    if st.session_state.ai_chat_history:
+        st.divider()
+        if st.button("🗑️ Clear conversation", use_container_width=False):
+            st.session_state.ai_chat_history = []
+            st.rerun()
+
+    st.divider()
+    st.caption("⚠️ AI interpretation is for engineering reference only. Always verify against the official AWS D1.1/D1.1M:2025 standard before production welding.")
+
+
+
 
 with tab10:
     st.subheader("📄 WPS Generator — AWS D1.1 Annex J Form J-2")
