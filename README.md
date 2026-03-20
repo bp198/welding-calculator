@@ -156,8 +156,6 @@ Run the app → sidebar → upload PDFs + `welding_knowledge.txt` → click "Ind
 
 Built by **Babak Pirzadi** — Welding Engineer & Master's student in Engineering Technology for Strategy and Security, University of Genova, Italy.
 
-IWE certification candidate at IIS Genova.
-
 ---
 
 ## Disclaimer
