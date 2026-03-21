@@ -738,7 +738,7 @@ The user will now ask questions about this job. Answer specifically in context o
                 f"{thickness}mm preheat electrode bead"
             )
             try:
-                chunks      = _rag.query(search_query, n=5)
+                chunks      = _rag.query(search_query, n=7)
                 rag_context = _rag.format_context(chunks) if chunks else ""
             except Exception as e:
                 rag_context = f"(RAG retrieval failed: {e})"
@@ -821,8 +821,8 @@ The user will now ask questions about this job. Answer specifically in context o
 
 
 with tab10:
-    st.subheader("📄 WPS Generator — AWS D1.1 Annex J Form J-2")
-    st.markdown("Generate a professional WPS document matching the **official AWS D1.1/D1.1M Annex J** format.")
+    st.subheader("📄 AWS D1.1/D1.1M:2020 Form J-2 (GMAW & FCAW) Generator")
+    st.markdown("Generate a professional WPS document matching the **official AWS D1.1/D1.1M:2020 Annex J Form J-2** layout for GMAW/FCAW processes.")
     st.divider()
 
     # ── SECTION 1: HEADER INFO ──
@@ -910,406 +910,473 @@ with tab10:
 
     st.divider()
 
-    # ── SECTION 5: PROCEDURE ──
+    # ── SECTION 5: PROCEDURE (Multi-pass support) ──
     st.markdown("### ⚡ Procedure")
+
+    # Number of passes selector
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        num_passes = st.selectbox("Number of Passes:", list(range(1, 9)), index=0)
+    with col2:
+        st.write("")  # Spacer for alignment
+
     col1, col2 = st.columns(2)
     with col1:
         weld_layers = st.text_input("Weld Layer(s):", placeholder="e.g. All / 1 / 2-n")
         weld_passes = st.text_input("Weld Pass(es):", placeholder="e.g. All / Root / Fill")
-        process = st.text_input("Process:", value="SAW")
+        process = st.selectbox("Process:", ["GMAW", "FCAW", "SAW", "Other"], index=0)
         process_type = st.selectbox("Type:",
             ["Semiautomatic", "Mechanized", "Automatic", "Manual"])
         position = st.selectbox("Position:",
             ["Flat (1G/1F)", "Horizontal (2G/2F)", "Vertical-Up (3G/3F)",
              "Overhead (4G/4F)", "Fixed Pipe (5G)", "All (6G)"])
+        vertical_prog = st.selectbox("Vertical Progression:",
+            ["Uphill (Up)", "Downhill (Down)", "N/A"])
+
     with col2:
-        filler_spec = st.text_input("Filler Metal (AWS Spec.):", placeholder="e.g. AWS A5.17")
-        aws_class = st.text_input("AWS Classification:", placeholder="e.g. EM12K")
-        electrode_dia = st.text_input("Electrode Diameter:", placeholder="e.g. 4.0 mm")
-        electrode_flux = st.text_input("Electrode/Flux Classification:", placeholder="e.g. F7A2-EM12K")
+        filler_spec = st.text_input("Filler Metal (AWS Spec.):", placeholder="e.g. AWS A5.18")
+        aws_class = st.text_input("AWS Classification:", placeholder="e.g. ER70S-3")
+        electrode_dia = st.text_input("Diameter:", placeholder="e.g. 1.2 mm / 1.6 mm")
         manufacturer = st.text_input("Manufacturer/Trade Name:", placeholder="e.g. Lincoln Electric")
-        supplemental_filler = st.text_input("Supplemental Filler Metal:", placeholder="e.g. N/A")
         preheat_temp = st.text_input("Preheat Temperature:", placeholder="e.g. 10°C [50°F] min")
         interpass_temp = st.text_input("Interpass Temperature:", placeholder="e.g. 250°C [480°F] max")
 
     st.divider()
 
-    # ── SECTION 6: ELECTRICAL CHARACTERISTICS ──
+    # ── SECTION 6: ELECTRICAL CHARACTERISTICS (Multi-pass columns) ──
     st.markdown("### 🔌 Electrical Characteristics")
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        current_polarity = st.selectbox("Current Type & Polarity:",
-            ["DCEP", "DCEN", "AC", "Pulsed DCEP"])
-    with col2:
-        amps = st.text_input("Amps:", placeholder="e.g. 500-700 A")
-    with col3:
-        volts = st.text_input("Volts:", placeholder="e.g. 28-34 V")
-    with col4:
-        wire_feed = st.text_input("Wire Feed Speed:", placeholder="e.g. 1200-1800 mm/min")
-    with col5:
-        travel_speed = st.text_input("Travel Speed:", placeholder="e.g. 400-600 mm/min")
+    st.markdown(f"**Enter data for {num_passes} weld pass(es):**")
+
+    pass_data_elec = {}
+    pass_cols = st.columns(min(num_passes, 4))
+    for i in range(num_passes):
+        col_idx = i % 4
+        with pass_cols[col_idx]:
+            st.markdown(f"**Pass {i+1}**")
+            pass_data_elec[i+1] = {
+                'current_polarity': st.selectbox(f"Current/Polarity (Pass {i+1}):",
+                    ["DCEP", "DCEN", "AC", "Pulsed DCEP"], key=f"current_{i}"),
+                'transfer_mode': st.selectbox(f"Transfer Mode (Pass {i+1}):",
+                    ["Spray", "Pulse", "Short-circuit", "N/A"], key=f"transfer_{i}"),
+                'power_source_type': st.selectbox(f"Power Source (Pass {i+1}):",
+                    ["CC (Constant Current)", "CV (Constant Voltage)", "Pulsed", "N/A"], key=f"power_{i}"),
+                'amps': st.text_input(f"Amps (Pass {i+1}):", placeholder="e.g. 200-250", key=f"amps_{i}"),
+                'volts': st.text_input(f"Volts (Pass {i+1}):", placeholder="e.g. 26-30", key=f"volts_{i}"),
+                'wire_feed': st.text_input(f"Wire Feed Speed (Pass {i+1}):", placeholder="e.g. 600 mm/min", key=f"wire_{i}"),
+                'travel_speed': st.text_input(f"Travel Speed (Pass {i+1}):", placeholder="e.g. 400 mm/min", key=f"travel_{i}"),
+                'max_heat_input': st.text_input(f"Max Heat Input (Pass {i+1}):", placeholder="e.g. 2.5 kJ/mm", key=f"heat_{i}"),
+            }
 
     col1, col2 = st.columns(2)
     with col1:
-        max_heat_input = st.text_input("Maximum Heat Input:", placeholder="e.g. 3.5 kJ/mm")
+        shielding_gas_comp = st.text_input("Shielding Gas Composition:", placeholder="e.g. Ar+2%O2 or 75%Ar+25%CO2")
     with col2:
-        shielding_gas = st.text_input("Shielding Gas (if applicable):", placeholder="e.g. N/A for SAW")
+        shielding_gas_flow = st.text_input("Shielding Gas Flow Rate:", placeholder="e.g. 20-25 L/min")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        nozzle_size = st.text_input("Nozzle Size:", placeholder="e.g. 16 mm / 5/8 in")
+    with col2:
+        contact_tube_dist = st.text_input("Contact Tube to Work Distance:", placeholder="e.g. 19-25 mm")
 
     st.divider()
 
-    # ── SECTION 7: TECHNIQUE ──
+    # ── SECTION 7: TECHNIQUE (Multi-pass columns) ──
     st.markdown("### 🛠️ Technique")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        stringer_weave = st.selectbox("Stringer or Weave:", ["Stringer", "Weave", "Both"])
-        multi_single_pass = st.selectbox("Multi or Single Pass (per side):",
-            ["Multi-pass", "Single pass", "Both"])
-        num_electrodes = st.text_input("Number of Electrodes:", placeholder="e.g. 1 / 2 (tandem)")
-    with col2:
-        long_spacing = st.text_input("Longitudinal Spacing of Arcs:", placeholder="e.g. N/A")
-        lateral_spacing = st.text_input("Lateral Spacing of Arcs:", placeholder="e.g. N/A")
-        angle_parallel = st.text_input("Angle of Parallel Electrodes:", placeholder="e.g. N/A")
-        angle_electrode = st.text_input("Angle of Electrode (Mech./Auto.):", placeholder="e.g. 90°")
-    with col3:
-        normal_direction = st.text_input("Normal To Direction of Travel:", placeholder="e.g. 90°")
-        oscillation = st.text_input("Oscillation (Mech./Auto.):", placeholder="e.g. N/A")
-        traverse_length = st.text_input("Traverse Length:", placeholder="e.g. N/A")
-        traverse_speed = st.text_input("Traverse Speed:", placeholder="e.g. N/A")
-        dwell_time = st.text_input("Dwell Time:", placeholder="e.g. N/A")
+    st.markdown(f"**Enter data for {num_passes} weld pass(es):**")
 
-    col1, col2, col3 = st.columns(3)
+    pass_data_tech = {}
+    pass_cols = st.columns(min(num_passes, 4))
+    for i in range(num_passes):
+        col_idx = i % 4
+        with pass_cols[col_idx]:
+            st.markdown(f"**Pass {i+1}**")
+            pass_data_tech[i+1] = {
+                'stringer_weave': st.selectbox(f"Stringer/Weave (Pass {i+1}):",
+                    ["Stringer", "Weave", "Both"], key=f"sw_{i}"),
+                'multi_single': st.selectbox(f"Multi/Single Pass (Pass {i+1}):",
+                    ["Multi-pass", "Single pass"], key=f"ms_{i}"),
+                'oscillation': st.selectbox(f"Oscillation (Pass {i+1}):",
+                    ["Yes", "No", "N/A"], key=f"osc_{i}"),
+                'traverse_length': st.text_input(f"Traverse Length (Pass {i+1}):", placeholder="e.g. 100 mm / N/A", key=f"tl_{i}"),
+                'traverse_speed': st.text_input(f"Traverse Speed (Pass {i+1}):", placeholder="e.g. 50 mm/min / N/A", key=f"ts_{i}"),
+                'dwell_time': st.text_input(f"Dwell Time (Pass {i+1}):", placeholder="e.g. N/A", key=f"dw_{i}"),
+                'num_electrodes': st.text_input(f"Number of Electrodes (Pass {i+1}):", placeholder="e.g. 1 / 2 tandem", key=f"ne_{i}"),
+                'peening': st.selectbox(f"Peening (Pass {i+1}):", ["None", "Yes", "N/A"], key=f"peen_{i}"),
+                'interpass_cleaning': st.selectbox(f"Interpass Cleaning (Pass {i+1}):",
+                    ["Wire brush", "Grinding", "Both", "None"], key=f"ipc_{i}"),
+            }
+
+    col1, col2 = st.columns(2)
     with col1:
-        peening = st.text_input("Peening:", placeholder="e.g. None")
+        other_info = st.text_input("Other Information:", placeholder="e.g. Special requirements, notes")
     with col2:
-        interpass_cleaning = st.text_input("Interpass Cleaning:", placeholder="e.g. Wire brush / Grinding")
-    with col3:
-        other_technique = st.text_input("Other:", placeholder="e.g. N/A")
+        st.write("")  # Spacer
 
     st.divider()
 
     # ── GENERATE BUTTONS ──
     st.markdown("### 📥 Generate WPS Document")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         generate_pdf = st.button("📄 Generate PDF", use_container_width=True)
     with col2:
         generate_docx = st.button("📝 Generate Word (.docx)", use_container_width=True)
+    with col3:
+        generate_latex = st.button("🔬 Generate LaTeX PDF", use_container_width=True, help="Professional typeset PDF via LaTeX")
 
     # ════════════════════════════════════════════════════════
-    # PDF GENERATION
+    # PDF GENERATION (Clean B&W AWS Form J-2 Layout)
     # ════════════════════════════════════════════════════════
     if generate_pdf:
         try:
-            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.pagesizes import letter
             from reportlab.lib import colors
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.units import mm
+            from reportlab.lib.units import mm, inch
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
             from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
             import io
 
             buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4,
-                rightMargin=10*mm, leftMargin=10*mm,
-                topMargin=10*mm, bottomMargin=10*mm)
+            doc = SimpleDocTemplate(buffer, pagesize=letter,
+                rightMargin=0.5*inch, leftMargin=0.5*inch,
+                topMargin=0.5*inch, bottomMargin=0.5*inch)
 
             styles = getSampleStyleSheet()
             story = []
 
-            # Colors
-            dark_blue = colors.HexColor('#1a3a5c')
-            light_blue = colors.HexColor('#d6e4f0')
-            light_gray = colors.HexColor('#f5f5f5')
-            mid_gray = colors.HexColor('#e0e0e0')
+            W = 7.5*inch  # total width for letter paper
 
-            # Styles
-            hdr_style = ParagraphStyle('Hdr', fontSize=7, fontName='Helvetica-Bold',
-                textColor=colors.white)
-            cell_style = ParagraphStyle('Cell', fontSize=7, fontName='Helvetica')
-            cell_bold = ParagraphStyle('CellBold', fontSize=7, fontName='Helvetica-Bold')
-            title_style = ParagraphStyle('Title', fontSize=12, fontName='Helvetica-Bold',
-                textColor=dark_blue, alignment=TA_CENTER)
-            sub_style = ParagraphStyle('Sub', fontSize=8, fontName='Helvetica',
-                textColor=dark_blue, alignment=TA_CENTER)
-
-            W = 190*mm  # total width
-
-            def hdr(text):
-                return Paragraph(f'<b>{text}</b>', hdr_style)
-
-            def cell(text):
-                return Paragraph(str(text) if text else '—', cell_style)
-
-            def field(label, value):
-                return [Paragraph(f'<b>{label}</b>', cell_bold),
-                        Paragraph(str(value) if value else '—', cell_style)]
-
-            def section_hdr(text, colspan=4):
-                t = Table([[hdr(text)]], colWidths=[W])
-                t.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (-1,-1), dark_blue),
-                    ('TOPPADDING', (0,0), (-1,-1), 3),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-                    ('LEFTPADDING', (0,0), (-1,-1), 5),
-                ]))
-                return t
-
-            def make_table(rows, col_widths, bg=True):
-                t = Table(rows, colWidths=col_widths)
-                style = [
-                    ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                    ('TOPPADDING', (0,0), (-1,-1), 2),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                    ('LEFTPADDING', (0,0), (-1,-1), 4),
-                ]
-                if bg:
-                    for i in range(len(rows)):
-                        bg_color = light_gray if i % 2 == 0 else colors.white
-                        style.append(('BACKGROUND', (0,i), (-1,i), bg_color))
-                t.setStyle(TableStyle(style))
-                return t
+            # ── HEADER (ANNEX J / AWS D1.1/D1.1M:2020) ──
+            hdr_text_style = ParagraphStyle('HdrText', fontSize=7, fontName='Helvetica',
+                textColor=colors.black)
+            header_row = Table([
+                [Paragraph('ANNEX J', hdr_text_style),
+                 Paragraph('AWS D1.1/D1.1M:2020', hdr_text_style)]
+            ], colWidths=[W/2, W/2])
+            header_row.setStyle(TableStyle([
+                ('ALIGN', (0,0), (0,0), 'LEFT'),
+                ('ALIGN', (1,0), (1,0), 'RIGHT'),
+                ('TOPPADDING', (0,0), (-1,-1), 2),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ]))
+            story.append(header_row)
+            story.append(Spacer(1, 0.08*inch))
 
             # ── TITLE ──
+            title_style = ParagraphStyle('Title', fontSize=11, fontName='Helvetica-Bold',
+                alignment=TA_CENTER)
+            story.append(Paragraph('Blank Sample WPS Form (GMAW & FCAW)', title_style))
             story.append(Paragraph('WELDING PROCEDURE SPECIFICATION (WPS)', title_style))
-            story.append(Paragraph('AWS D1.1/D1.1M:2020 — Annex J, Form J-2', sub_style))
-            story.append(Spacer(1, 3*mm))
+            story.append(Spacer(1, 0.08*inch))
 
-            # ── HEADER BLOCK ──
-            hdr_rows = [
-                [hdr('Company Name'), cell(company_name),
-                 hdr('WPS No.'), cell(wps_number),
-                 hdr('Rev. No.'), cell(rev_number),
-                 hdr('Date'), cell(str(wps_date))],
-                [hdr('Authorized By'), cell(authorized_by),
-                 hdr('Auth. Date'), cell(str(auth_date)),
-                 hdr('Supporting PQR(s)'), cell(supporting_pqr),
-                 hdr('CVN Report'), cell(cvn_report)],
-            ]
-            hdr_table = Table(hdr_rows,
-                colWidths=[25*mm, 35*mm, 18*mm, 25*mm, 18*mm, 20*mm, 18*mm, 25*mm])
-            hdr_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,-1), dark_blue),
-                ('BACKGROUND', (2,0), (2,-1), dark_blue),
-                ('BACKGROUND', (4,0), (4,-1), dark_blue),
-                ('BACKGROUND', (6,0), (6,-1), dark_blue),
-                ('BACKGROUND', (1,0), (1,-1), light_blue),
-                ('BACKGROUND', (3,0), (3,-1), light_blue),
-                ('BACKGROUND', (5,0), (5,-1), light_blue),
-                ('BACKGROUND', (7,0), (7,-1), light_blue),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 3),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
-            ]))
-            story.append(hdr_table)
-            story.append(Spacer(1, 2*mm))
+            # ── DOCUMENT HEADER TABLE ──
+            def mk_cell(text, bold=False):
+                font = 'Helvetica-Bold' if bold else 'Helvetica'
+                return Paragraph(str(text) if text else '', ParagraphStyle('C', fontSize=7, fontName=font))
 
-            # ── BASE METALS + JOINT DETAILS (side by side) ──
-            story.append(section_hdr('BASE METALS'))
-            bm_left = [
-                [hdr('Specification'), hdr('Type or Grade'), hdr('AWS Group No.')],
-                [cell(bm_spec), cell(bm_type_grade), cell(bm_aws_group)],
-                [hdr('Base Material'), hdr('Welded To'), hdr('Backing Material')],
-                [cell(bm_spec), cell(bm_welded_to), cell(bm_backing)],
-                [hdr('Diameter'), cell(bm_diameter), ''],
+            doc_hdr_rows = [
+                [mk_cell('Company Name'), mk_cell(company_name or ''),
+                 mk_cell('WPS No.'), mk_cell(wps_number or ''),
+                 mk_cell('Rev. No.'), mk_cell(rev_number or ''),
+                 mk_cell('Date'), mk_cell(str(wps_date) if wps_date else '')],
+                [mk_cell('Authorized by'), mk_cell(authorized_by or ''),
+                 mk_cell('Date'), mk_cell(str(auth_date) if auth_date else ''),
+                 mk_cell('Supporting PQR(s)'), mk_cell(supporting_pqr or ''),
+                 mk_cell('CVN Report'), mk_cell(cvn_report or '')],
             ]
-            bm_table = Table(bm_left, colWidths=[W/3, W/3, W/3])
-            bm_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), dark_blue),
-                ('BACKGROUND', (0,2), (-1,2), dark_blue),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [light_gray, colors.white]),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
+            doc_hdr_tbl = Table(doc_hdr_rows, colWidths=[0.8*inch, 0.9*inch, 0.7*inch, 0.85*inch,
+                                                          0.7*inch, 0.75*inch, 0.6*inch, 0.75*inch])
+            doc_hdr_tbl.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('TOPPADDING', (0,0), (-1,-1), 2),
                 ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
-                ('SPAN', (1,4), (2,4)),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
             ]))
-            story.append(bm_table)
+            story.append(doc_hdr_tbl)
+            story.append(Spacer(1, 0.05*inch))
 
-            # Thickness table
-            thick_rows = [
-                [hdr('BASE METAL THICKNESS'), hdr('As-Welded'), hdr('With PWHT')],
-                [cell('CJP Groove Welds'), cell(thick_cjp_aw), cell(thick_cjp_pwht)],
-                [cell('CJP Groove w/CVN'), cell(thick_cjp_cvn_aw), cell(thick_cjp_cvn_pwht)],
-                [cell('PJP Groove Welds'), cell(thick_pjp_aw), cell(thick_pjp_pwht)],
-                [cell('Fillet Welds'), cell(thick_fillet_aw), cell(thick_fillet_pwht)],
+            # ── BASE METALS (LEFT) + BASE METAL THICKNESS (RIGHT) ──
+            # Left table
+            bm_rows = [
+                [mk_cell('BASE METALS', True), mk_cell('Specification', True),
+                 mk_cell('Type or Grade', True), mk_cell('AWS Group No.', True)],
+                [mk_cell('Base Material'), mk_cell(bm_spec or ''),
+                 mk_cell(bm_type_grade or ''), mk_cell(bm_aws_group or '')],
+                [mk_cell('Welded To'), mk_cell(bm_welded_to or ''),
+                 mk_cell(''), mk_cell('')],
+                [mk_cell('Backing Material'), mk_cell(bm_backing or ''),
+                 mk_cell(''), mk_cell('')],
+                [mk_cell('Diameter'), mk_cell(bm_diameter or ''),
+                 mk_cell(''), mk_cell('')],
             ]
-            thick_table = Table(thick_rows, colWidths=[W/3, W/3, W/3])
-            thick_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), dark_blue),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [light_gray, colors.white]),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
-            ]))
-            story.append(thick_table)
-            story.append(Spacer(1, 2*mm))
-
-            # ── JOINT DETAILS ──
-            story.append(section_hdr('JOINT DETAILS'))
-            jd_rows = [
-                [hdr('Groove Type'), cell(groove_type),
-                 hdr('Root Opening'), cell(root_opening)],
-                [hdr('Groove Angle'), cell(groove_angle),
-                 hdr('Root Face'), cell(root_face)],
-                [hdr('Backgouging'), cell(backgouging),
-                 hdr('Method'), cell(backgouging_method)],
-                [hdr('Joint Sketch Notes'), cell(joint_sketch), '', ''],
-            ]
-            jd_table = Table(jd_rows, colWidths=[W/4, W/4, W/4, W/4])
-            jd_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,-1), dark_blue),
-                ('BACKGROUND', (2,0), (2,2), dark_blue),
-                ('ROWBACKGROUNDS', (1,0), (1,-1), [light_gray, colors.white, light_gray, colors.white]),
-                ('ROWBACKGROUNDS', (3,0), (3,-1), [light_gray, colors.white, light_gray, colors.white]),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                ('SPAN', (1,3), (3,3)),
+            bm_tbl = Table(bm_rows, colWidths=[0.9*inch, 1.2*inch, 1.2*inch, 1.2*inch])
+            bm_tbl.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
             ]))
-            story.append(jd_table)
-            story.append(Spacer(1, 2*mm))
 
-            # ── PWHT ──
-            story.append(section_hdr('POSTWELD HEAT TREATMENT'))
+            # Right table
+            thick_rows = [
+                [mk_cell('BASE METAL THICKNESS', True), mk_cell('As-Welded', True),
+                 mk_cell('With PWHT', True)],
+                [mk_cell('CJP Groove Welds'), mk_cell(thick_cjp_aw or ''),
+                 mk_cell(thick_cjp_pwht or '')],
+                [mk_cell('CJP Groove w/CVN'), mk_cell(thick_cjp_cvn_aw or ''),
+                 mk_cell(thick_cjp_cvn_pwht or '')],
+                [mk_cell('PJP Groove Welds'), mk_cell(thick_pjp_aw or ''),
+                 mk_cell(thick_pjp_pwht or '')],
+                [mk_cell('Fillet Welds'), mk_cell(thick_fillet_aw or ''),
+                 mk_cell(thick_fillet_pwht or '')],
+            ]
+            thick_tbl = Table(thick_rows, colWidths=[1.5*inch, 1.25*inch, 1.25*inch])
+            thick_tbl.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
+            ]))
+
+            # Side-by-side layout
+            side_by_side = Table([[bm_tbl, thick_tbl]], colWidths=[3.8*inch, 3.7*inch])
+            side_by_side.setStyle(TableStyle([
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ]))
+            story.append(side_by_side)
+            story.append(Spacer(1, 0.05*inch))
+
+            # ── JOINT DETAILS (LEFT) + SKETCH (RIGHT) ──
+            jd_rows = [
+                [mk_cell('JOINT DETAILS', True), mk_cell('', True)],
+                [mk_cell('Groove Type'), mk_cell(groove_type or '')],
+                [mk_cell('Groove Angle'), mk_cell(groove_angle or '')],
+                [mk_cell('Root Opening'), mk_cell(root_opening or '')],
+                [mk_cell('Root Face'), mk_cell(root_face or '')],
+                [mk_cell('Backgouging'), mk_cell(backgouging or '')],
+                [mk_cell('Method'), mk_cell(backgouging_method or '')],
+            ]
+            jd_tbl = Table(jd_rows, colWidths=[1.5*inch, 2.3*inch])
+            jd_tbl.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
+            ]))
+
+            sketch_tbl = Table([
+                [mk_cell('JOINT DETAILS (Sketch)', True)],
+                [Paragraph('[Sketch area]', ParagraphStyle('S', fontSize=6, fontName='Helvetica-Italic'))],
+            ], colWidths=[3.7*inch])
+            sketch_tbl.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('MINHEIGHT', (0,1), (-1,1), 1.0*inch),
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
+            ]))
+
+            jd_side = Table([[jd_tbl, sketch_tbl]], colWidths=[3.8*inch, 3.7*inch])
+            jd_side.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ]))
+            story.append(jd_side)
+            story.append(Spacer(1, 0.05*inch))
+
+            # ── POSTWELD HEAT TREATMENT ──
             pwht_rows = [
-                [hdr('Temperature'), hdr('Time at Temperature'), hdr('Other')],
-                [cell(pwht_temp), cell(pwht_time), cell(pwht_other)],
+                [mk_cell('POSTWELD HEAT TREATMENT', True),
+                 mk_cell('', True), mk_cell('', True)],
+                [mk_cell('Temperature'), mk_cell(pwht_temp or ''), mk_cell('')],
+                [mk_cell('Time at Temperature'), mk_cell(pwht_time or ''), mk_cell('')],
+                [mk_cell('Other'), mk_cell(pwht_other or ''), mk_cell('')],
             ]
-            pwht_table = Table(pwht_rows, colWidths=[W/3, W/3, W/3])
-            pwht_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), dark_blue),
-                ('BACKGROUND', (0,1), (-1,1), light_gray),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
+            pwht_tbl = Table(pwht_rows, colWidths=[1.5*inch, 2.5*inch, 3.5*inch])
+            pwht_tbl.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
             ]))
-            story.append(pwht_table)
-            story.append(Spacer(1, 2*mm))
+            story.append(pwht_tbl)
+            story.append(Spacer(1, 0.05*inch))
 
-            # ── PROCEDURE ──
-            story.append(section_hdr('PROCEDURE'))
-            proc_rows = [
-                [hdr('Weld Layer(s)'), cell(weld_layers),
-                 hdr('Weld Pass(es)'), cell(weld_passes),
-                 hdr('Process'), cell(process),
-                 hdr('Type'), cell(process_type)],
-                [hdr('Position'), cell(position),
-                 hdr('Filler Metal (AWS Spec.)'), cell(filler_spec),
-                 hdr('AWS Classification'), cell(aws_class),
-                 hdr('Electrode Dia.'), cell(electrode_dia)],
-                [hdr('Electrode/Flux Class.'), cell(electrode_flux),
-                 hdr('Manufacturer/Trade Name'), cell(manufacturer),
-                 hdr('Supplemental Filler'), cell(supplemental_filler),
-                 hdr(''), cell('')],
-                [hdr('Preheat Temperature'), cell(preheat_temp),
-                 hdr('Interpass Temperature'), cell(interpass_temp),
-                 hdr('Shielding Gas'), cell(shielding_gas),
-                 hdr(''), cell('')],
-            ]
-            proc_table = Table(proc_rows,
-                colWidths=[W/8, W/8, W/8, W/8, W/8, W/8, W/8, W/8])
-            proc_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,-1), dark_blue),
-                ('BACKGROUND', (2,0), (2,-1), dark_blue),
-                ('BACKGROUND', (4,0), (4,-1), dark_blue),
-                ('BACKGROUND', (6,0), (6,-1), dark_blue),
-                ('ROWBACKGROUNDS', (1,0), (1,-1), [light_gray, colors.white, light_gray, colors.white]),
-                ('ROWBACKGROUNDS', (3,0), (3,-1), [light_gray, colors.white, light_gray, colors.white]),
-                ('ROWBACKGROUNDS', (5,0), (5,-1), [light_gray, colors.white, light_gray, colors.white]),
-                ('ROWBACKGROUNDS', (7,0), (7,-1), [light_gray, colors.white, light_gray, colors.white]),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
-            ]))
-            story.append(proc_table)
-            story.append(Spacer(1, 2*mm))
+            # ── PROCEDURE (Multi-column table) ──
+            # Build procedure rows with dynamic columns based on num_passes
+            col_widths = [1.2*inch] + [(W - 1.2*inch) / num_passes] * num_passes
 
-            # ── ELECTRICAL CHARACTERISTICS ──
-            story.append(section_hdr('ELECTRICAL CHARACTERISTICS'))
-            elec_rows = [
-                [hdr('Current Type & Polarity'), hdr('Amps'),
-                 hdr('Volts'), hdr('Wire Feed Speed'),
-                 hdr('Travel Speed'), hdr('Max Heat Input')],
-                [cell(current_polarity), cell(amps),
-                 cell(volts), cell(wire_feed),
-                 cell(travel_speed), cell(max_heat_input)],
+            proc_row_labels = [
+                'Weld Layer(s)',
+                'Weld Pass(es)',
+                'Process',
+                '  Type (Semiautomatic, Mechanized, etc.)',
+                'Position',
+                '  Vertical Progression',
+                'Filler Metal (AWS Spec.)',
+                '  AWS Classification',
+                '  Diameter',
+                '  Manufacturer/Trade Name',
+                'Shielding Gas (Composition)',
+                '  Flow Rate',
+                '  Nozzle Size',
+                'Preheat Temperature',
+                '  Interpass Temperature',
+                'Electrical Characteristics ' + '—' * (num_passes * 3),
+                'Current Type & Polarity',
+                '  Transfer Mode',
+                '  Power Source Type (cc, cv, etc.)',
+                'Amps',
+                'Volts',
+                'Wire Feed Speed',
+                'Travel Speed',
+                'Maximum Heat Input',
+                'Technique ' + '—' * (num_passes * 3),
+                'Stringer or Weave',
+                '  Multi or Single Pass (per side)',
+                'Oscillation (Mechanized/Automatic)',
+                'Traverse Length',
+                'Traverse Speed',
+                'Dwell Time',
+                'Number of Electrodes',
+                'Contact Tube to Work Distance',
+                'Peening',
+                'Interpass Cleaning',
+                'Other',
             ]
-            elec_table = Table(elec_rows,
-                colWidths=[W/6, W/6, W/6, W/6, W/6, W/6])
-            elec_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), dark_blue),
-                ('BACKGROUND', (0,1), (-1,1), light_gray),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
-            ]))
-            story.append(elec_table)
-            story.append(Spacer(1, 2*mm))
 
-            # ── TECHNIQUE ──
-            story.append(section_hdr('TECHNIQUE'))
-            tech_rows = [
-                [hdr('Stringer or Weave'), cell(stringer_weave),
-                 hdr('Multi/Single Pass'), cell(multi_single_pass),
-                 hdr('No. of Electrodes'), cell(num_electrodes)],
-                [hdr('Long. Spacing of Arcs'), cell(long_spacing),
-                 hdr('Lateral Spacing of Arcs'), cell(lateral_spacing),
-                 hdr('Angle of Parallel Electrodes'), cell(angle_parallel)],
-                [hdr('Angle of Electrode'), cell(angle_electrode),
-                 hdr('Normal to Direction of Travel'), cell(normal_direction),
-                 hdr('Oscillation'), cell(oscillation)],
-                [hdr('Traverse Length'), cell(traverse_length),
-                 hdr('Traverse Speed'), cell(traverse_speed),
-                 hdr('Dwell Time'), cell(dwell_time)],
-                [hdr('Peening'), cell(peening),
-                 hdr('Interpass Cleaning'), cell(interpass_cleaning),
-                 hdr('Other'), cell(other_technique)],
-            ]
-            tech_table = Table(tech_rows,
-                colWidths=[W/6, W/6, W/6, W/6, W/6, W/6])
-            tech_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,-1), dark_blue),
-                ('BACKGROUND', (2,0), (2,-1), dark_blue),
-                ('BACKGROUND', (4,0), (4,-1), dark_blue),
-                ('ROWBACKGROUNDS', (1,0), (1,-1), [light_gray, colors.white, light_gray, colors.white, light_gray]),
-                ('ROWBACKGROUNDS', (3,0), (3,-1), [light_gray, colors.white, light_gray, colors.white, light_gray]),
-                ('ROWBACKGROUNDS', (5,0), (5,-1), [light_gray, colors.white, light_gray, colors.white, light_gray]),
-                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#aaaaaa')),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                ('LEFTPADDING', (0,0), (-1,-1), 4),
+            proc_rows = []
+            # Header row
+            header_cells = [mk_cell('PROCEDURE', True)]
+            for i in range(1, num_passes + 1):
+                header_cells.append(mk_cell(f'Pass {i}', True))
+            proc_rows.append(header_cells)
+
+            # Data rows
+            for label in proc_row_labels:
+                row = [mk_cell(label, 'ELECTRICAL' in label or 'Technique' in label)]
+                for p in range(1, num_passes + 1):
+                    if label == 'Weld Layer(s)':
+                        row.append(mk_cell(weld_layers or ''))
+                    elif label == 'Weld Pass(es)':
+                        row.append(mk_cell(weld_passes or ''))
+                    elif label == 'Process':
+                        row.append(mk_cell(process or 'GMAW'))
+                    elif label.startswith('  Type'):
+                        row.append(mk_cell(process_type or ''))
+                    elif label == 'Position':
+                        row.append(mk_cell(position or ''))
+                    elif label.startswith('  Vertical'):
+                        row.append(mk_cell(vertical_prog or ''))
+                    elif label == 'Filler Metal (AWS Spec.)':
+                        row.append(mk_cell(filler_spec or ''))
+                    elif label.startswith('  AWS Classification'):
+                        row.append(mk_cell(aws_class or ''))
+                    elif label.startswith('  Diameter'):
+                        row.append(mk_cell(electrode_dia or ''))
+                    elif label.startswith('  Manufacturer'):
+                        row.append(mk_cell(manufacturer or ''))
+                    elif label == 'Shielding Gas (Composition)':
+                        row.append(mk_cell(shielding_gas_comp or ''))
+                    elif label.startswith('  Flow Rate'):
+                        row.append(mk_cell(shielding_gas_flow or ''))
+                    elif label.startswith('  Nozzle'):
+                        row.append(mk_cell(nozzle_size or ''))
+                    elif label == 'Preheat Temperature':
+                        row.append(mk_cell(preheat_temp or ''))
+                    elif label.startswith('  Interpass'):
+                        row.append(mk_cell(interpass_temp or ''))
+                    elif 'Electrical' in label or 'Technique' in label or label.startswith('—'):
+                        row.append(mk_cell(''))
+                    elif label == 'Current Type & Polarity':
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('current_polarity', '')))
+                    elif label.startswith('  Transfer'):
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('transfer_mode', '')))
+                    elif label.startswith('  Power'):
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('power_source_type', '')))
+                    elif label == 'Amps':
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('amps', '')))
+                    elif label == 'Volts':
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('volts', '')))
+                    elif label == 'Wire Feed Speed':
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('wire_feed', '')))
+                    elif label == 'Travel Speed':
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('travel_speed', '')))
+                    elif label == 'Maximum Heat Input':
+                        row.append(mk_cell(pass_data_elec.get(p, {}).get('max_heat_input', '')))
+                    elif label == 'Stringer or Weave':
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('stringer_weave', '')))
+                    elif label.startswith('  Multi'):
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('multi_single', '')))
+                    elif label.startswith('Oscillation'):
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('oscillation', '')))
+                    elif label == 'Traverse Length':
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('traverse_length', '')))
+                    elif label == 'Traverse Speed':
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('traverse_speed', '')))
+                    elif label == 'Dwell Time':
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('dwell_time', '')))
+                    elif label == 'Number of Electrodes':
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('num_electrodes', '')))
+                    elif label.startswith('Contact Tube'):
+                        row.append(mk_cell(contact_tube_dist or ''))
+                    elif label == 'Peening':
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('peening', '')))
+                    elif label.startswith('Interpass Cleaning'):
+                        row.append(mk_cell(pass_data_tech.get(p, {}).get('interpass_cleaning', '')))
+                    elif label == 'Other':
+                        row.append(mk_cell(other_info or ''))
+                    else:
+                        row.append(mk_cell(''))
+                proc_rows.append(row)
+
+            proc_tbl = Table(proc_rows, colWidths=col_widths)
+            proc_tbl.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,0), (-1,-1), 6),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+                ('LEFTPADDING', (0,0), (-1,-1), 1),
+                ('MINHEIGHT', (0,0), (-1,-1), 0.18*inch),
             ]))
-            story.append(tech_table)
-            story.append(Spacer(1, 3*mm))
+            story.append(proc_tbl)
+            story.append(Spacer(1, 0.05*inch))
 
             # ── FOOTER ──
-            footer_rows = [
-                [Paragraph('Form J-2 | AWS D1.1/D1.1M:2020 — Annex J | '
-                           'Generated by Welding Engineering Toolbox | '
-                           'For official use, verify against the current edition of AWS D1.1',
-                           ParagraphStyle('Footer', fontSize=6,
-                           textColor=colors.gray, alignment=TA_CENTER))]
-            ]
-            footer_table = Table(footer_rows, colWidths=[W])
-            footer_table.setStyle(TableStyle([
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('LINEABOVE', (0,0), (-1,0), 0.5, colors.gray),
-            ]))
-            story.append(footer_table)
+            footer_style = ParagraphStyle('Footer', fontSize=6, fontName='Helvetica',
+                alignment=TA_CENTER)
+            footer_text = Paragraph(
+                'Form J-2 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; '
+                '(See http://go.aws.org/D1forms)',
+                footer_style
+            )
+            story.append(footer_text)
+            story.append(Spacer(1, 0.02*inch))
+
+            footer_bottom = Paragraph(
+                'ANNEX J &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; AWS D1.1/D1.1M:2020',
+                footer_style
+            )
+            story.append(footer_bottom)
 
             doc.build(story)
             buffer.seek(0)
@@ -1327,14 +1394,13 @@ with tab10:
             st.error(f"❌ Error generating PDF: {str(e)}")
 
     # ════════════════════════════════════════════════════════
-    # DOCX GENERATION
+    # DOCX GENERATION (Clean B&W AWS Form J-2 Layout)
     # ════════════════════════════════════════════════════════
     if generate_docx:
         try:
             from docx import Document as DocxDocument
             from docx.shared import Pt, RGBColor, Cm
             from docx.enum.text import WD_ALIGN_PARAGRAPH
-            from docx.enum.table import WD_TABLE_ALIGNMENT
             from docx.oxml.ns import qn
             from docx.oxml import OxmlElement
             import io
@@ -1343,10 +1409,27 @@ with tab10:
             document = DocxDocument()
 
             section = document.sections[0]
-            section.top_margin = Cm(1.5)
-            section.bottom_margin = Cm(1.5)
-            section.left_margin = Cm(1.5)
-            section.right_margin = Cm(1.5)
+            section.top_margin = Cm(1.27)
+            section.bottom_margin = Cm(1.27)
+            section.left_margin = Cm(1.27)
+            section.right_margin = Cm(1.27)
+
+            def set_cell_borders(cell, **kwargs):
+                tcPr = cell._tcPr
+                if tcPr is None:
+                    tcPr = OxmlElement('w:tcPr')
+                    cell._element.append(tcPr)
+                tcBorders = OxmlElement('w:tcBorders')
+                for edge in ('top', 'left', 'bottom', 'right'):
+                    edge_data = kwargs.get(edge)
+                    if edge_data is not None:
+                        edge_el = OxmlElement(f'w:{edge}')
+                        edge_el.set(qn('w:val'), 'single')
+                        edge_el.set(qn('w:sz'), '4')
+                        edge_el.set(qn('w:space'), '0')
+                        edge_el.set(qn('w:color'), '000000')
+                        tcBorders.append(edge_el)
+                tcPr.append(tcBorders)
 
             def set_cell_bg(cell, hex_color):
                 tc = cell._tc
@@ -1357,161 +1440,284 @@ with tab10:
                 shd.set(qn('w:fill'), hex_color)
                 tcPr.append(shd)
 
-            def set_cell_text(cell, text, bold=False, white=False, size=8):
-                cell.text = str(text) if text else '—'
-                for para in cell.paragraphs:
-                    for run in para.runs:
-                        run.font.size = Pt(size)
-                        run.font.bold = bold
-                        if white:
-                            run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            # ── Header ──
+            hdr_para = document.add_paragraph()
+            hdr_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = hdr_para.add_run('ANNEX J — AWS D1.1/D1.1M:2020')
+            run.font.size = Pt(8)
+            run.font.bold = True
 
-            def add_section_header(doc, title):
-                table = doc.add_table(rows=1, cols=1)
-                table.style = 'Table Grid'
-                cell = table.rows[0].cells[0]
-                set_cell_bg(cell, '1a3a5c')
-                set_cell_text(cell, title, bold=True, white=True, size=9)
-
-            def add_two_col_table(doc, rows_data):
-                table = doc.add_table(rows=len(rows_data), cols=2)
-                table.style = 'Table Grid'
-                for i, (label, value) in enumerate(rows_data):
-                    row = table.rows[i]
-                    set_cell_bg(row.cells[0], 'd6e4f0')
-                    set_cell_text(row.cells[0], label, bold=True, size=8)
-                    bg = 'f5f5f5' if i % 2 == 0 else 'ffffff'
-                    set_cell_bg(row.cells[1], bg)
-                    set_cell_text(row.cells[1], value, size=8)
-                doc.add_paragraph()
-
-            # Title
+            # ── Title ──
             title_para = document.add_paragraph()
             title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = title_para.add_run('WELDING PROCEDURE SPECIFICATION (WPS)')
+            run = title_para.add_run('Blank Sample WPS Form (GMAW & FCAW)\n')
+            run.font.size = Pt(10)
             run.font.bold = True
-            run.font.size = Pt(14)
-            run.font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
-
-            sub_para = document.add_paragraph()
-            sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = sub_para.add_run('AWS D1.1/D1.1M:2020 — Annex J, Form J-2')
-            run.font.size = Pt(9)
-            run.font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
+            run = title_para.add_run('WELDING PROCEDURE SPECIFICATION (WPS)')
+            run.font.size = Pt(10)
+            run.font.bold = True
 
             document.add_paragraph()
 
-            # Header block
-            add_section_header(document, 'DOCUMENT HEADER')
-            add_two_col_table(document, [
-                ('Company Name:', company_name),
-                ('WPS No.:', wps_number),
-                ('Rev. No.:', rev_number),
-                ('Date:', str(wps_date)),
-                ('Authorized By:', authorized_by),
-                ('Authorization Date:', str(auth_date)),
-                ('Supporting PQR(s):', supporting_pqr),
-                ('CVN Report:', cvn_report),
-            ])
+            # ── Document Header Table ──
+            hdr_tbl = document.add_table(rows=2, cols=8)
+            hdr_tbl.style = 'Table Grid'
+            for i, label in enumerate(['Company Name', 'WPS No.', 'Rev. No.', 'Date',
+                                       'Authorized by', 'Auth. Date', 'Supporting PQR(s)', 'CVN Report']):
+                if i < 4:
+                    cell = hdr_tbl.rows[0].cells[i]
+                    cell.text = label
+                else:
+                    cell = hdr_tbl.rows[1].cells[i - 4]
+                    cell.text = label
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(7)
 
-            # Base metals
-            add_section_header(document, 'BASE METALS')
-            add_two_col_table(document, [
-                ('Specification:', bm_spec),
-                ('Type or Grade:', bm_type_grade),
-                ('AWS Group No.:', bm_aws_group),
-                ('Welded To:', bm_welded_to),
-                ('Backing Material:', bm_backing),
-                ('Diameter:', bm_diameter),
-                ('CJP Groove Welds (As-Welded):', thick_cjp_aw),
-                ('CJP Groove Welds (With PWHT):', thick_cjp_pwht),
-                ('CJP Groove w/CVN (As-Welded):', thick_cjp_cvn_aw),
-                ('CJP Groove w/CVN (With PWHT):', thick_cjp_cvn_pwht),
-                ('PJP Groove Welds (As-Welded):', thick_pjp_aw),
-                ('PJP Groove Welds (With PWHT):', thick_pjp_pwht),
-                ('Fillet Welds (As-Welded):', thick_fillet_aw),
-                ('Fillet Welds (With PWHT):', thick_fillet_pwht),
-            ])
+            hdr_vals = [company_name, wps_number, rev_number, str(wps_date),
+                       authorized_by, str(auth_date), supporting_pqr, cvn_report]
+            for i, val in enumerate(hdr_vals):
+                if i < 4:
+                    cell = hdr_tbl.rows[0].cells[i]
+                    cell.text = str(val) if val else ''
+                else:
+                    cell = hdr_tbl.rows[1].cells[i - 4]
+                    cell.text = str(val) if val else ''
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(7)
 
-            # Joint details
-            add_section_header(document, 'JOINT DETAILS')
-            add_two_col_table(document, [
-                ('Groove Type:', groove_type),
-                ('Groove Angle:', groove_angle),
-                ('Root Opening:', root_opening),
-                ('Root Face:', root_face),
-                ('Backgouging:', backgouging),
-                ('Backgouging Method:', backgouging_method),
-                ('Joint Sketch Notes:', joint_sketch),
-            ])
+            document.add_paragraph()
 
-            # PWHT
-            add_section_header(document, 'POSTWELD HEAT TREATMENT')
-            add_two_col_table(document, [
-                ('Temperature:', pwht_temp),
-                ('Time at Temperature:', pwht_time),
-                ('Other:', pwht_other),
-            ])
+            # ── Base Metals ──
+            document.add_paragraph('BASE METALS', style='Heading 2')
+            bm_tbl = document.add_table(rows=5, cols=4)
+            bm_tbl.style = 'Table Grid'
+            headers = ['', 'Specification', 'Type or Grade', 'AWS Group No.']
+            for i, h in enumerate(headers):
+                cell = bm_tbl.rows[0].cells[i]
+                cell.text = h
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(7)
 
-            # Procedure
-            add_section_header(document, 'PROCEDURE')
-            add_two_col_table(document, [
-                ('Weld Layer(s):', weld_layers),
-                ('Weld Pass(es):', weld_passes),
-                ('Process:', process),
-                ('Type:', process_type),
-                ('Position:', position),
-                ('Filler Metal (AWS Spec.):', filler_spec),
-                ('AWS Classification:', aws_class),
-                ('Electrode Diameter:', electrode_dia),
-                ('Electrode/Flux Classification:', electrode_flux),
-                ('Manufacturer/Trade Name:', manufacturer),
-                ('Supplemental Filler Metal:', supplemental_filler),
-                ('Preheat Temperature:', preheat_temp),
-                ('Interpass Temperature:', interpass_temp),
-                ('Shielding Gas:', shielding_gas),
-            ])
+            data = [
+                ['Base Material', bm_spec, bm_type_grade, bm_aws_group],
+                ['Welded To', bm_welded_to, '', ''],
+                ['Backing Material', bm_backing, '', ''],
+                ['Diameter', bm_diameter, '', ''],
+            ]
+            for i, row_data in enumerate(data):
+                for j, val in enumerate(row_data):
+                    cell = bm_tbl.rows[i + 1].cells[j]
+                    cell.text = str(val) if val else ''
+                    if j == 0:
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.bold = True
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
 
-            # Electrical
-            add_section_header(document, 'ELECTRICAL CHARACTERISTICS')
-            add_two_col_table(document, [
-                ('Current Type & Polarity:', current_polarity),
-                ('Amps:', amps),
-                ('Volts:', volts),
-                ('Wire Feed Speed:', wire_feed),
-                ('Travel Speed:', travel_speed),
-                ('Maximum Heat Input:', max_heat_input),
-            ])
+            document.add_paragraph()
 
-            # Technique
-            add_section_header(document, 'TECHNIQUE')
-            add_two_col_table(document, [
-                ('Stringer or Weave:', stringer_weave),
-                ('Multi or Single Pass (per side):', multi_single_pass),
-                ('Number of Electrodes:', num_electrodes),
-                ('Longitudinal Spacing of Arcs:', long_spacing),
-                ('Lateral Spacing of Arcs:', lateral_spacing),
-                ('Angle of Parallel Electrodes:', angle_parallel),
-                ('Angle of Electrode (Mech./Auto.):', angle_electrode),
-                ('Normal To Direction of Travel:', normal_direction),
-                ('Oscillation:', oscillation),
-                ('Traverse Length:', traverse_length),
-                ('Traverse Speed:', traverse_speed),
-                ('Dwell Time:', dwell_time),
-                ('Peening:', peening),
-                ('Interpass Cleaning:', interpass_cleaning),
-                ('Other:', other_technique),
-            ])
+            # ── Base Metal Thickness ──
+            thick_tbl = document.add_table(rows=5, cols=3)
+            thick_tbl.style = 'Table Grid'
+            headers = ['Base Metal Thickness', 'As-Welded', 'With PWHT']
+            for i, h in enumerate(headers):
+                cell = thick_tbl.rows[0].cells[i]
+                cell.text = h
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(7)
 
-            # Footer
+            thick_data = [
+                ['CJP Groove Welds', thick_cjp_aw, thick_cjp_pwht],
+                ['CJP Groove w/CVN', thick_cjp_cvn_aw, thick_cjp_cvn_pwht],
+                ['PJP Groove Welds', thick_pjp_aw, thick_pjp_pwht],
+                ['Fillet Welds', thick_fillet_aw, thick_fillet_pwht],
+            ]
+            for i, row_data in enumerate(thick_data):
+                for j, val in enumerate(row_data):
+                    cell = thick_tbl.rows[i + 1].cells[j]
+                    cell.text = str(val) if val else ''
+                    if j == 0:
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.bold = True
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
+
+            document.add_paragraph()
+
+            # ── Joint Details ──
+            document.add_paragraph('JOINT DETAILS', style='Heading 2')
+            jd_tbl = document.add_table(rows=7, cols=2)
+            jd_tbl.style = 'Table Grid'
+            jd_data = [
+                ['Groove Type', groove_type],
+                ['Groove Angle', groove_angle],
+                ['Root Opening', root_opening],
+                ['Root Face', root_face],
+                ['Backgouging', backgouging],
+                ['Method', backgouging_method],
+            ]
+            for i, row_data in enumerate(jd_data):
+                cell = jd_tbl.rows[i].cells[0]
+                cell.text = row_data[0]
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(7)
+                cell = jd_tbl.rows[i].cells[1]
+                cell.text = str(row_data[1]) if row_data[1] else ''
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(7)
+
+            document.add_paragraph()
+
+            # ── PWHT ──
+            document.add_paragraph('POSTWELD HEAT TREATMENT', style='Heading 2')
+            pwht_tbl = document.add_table(rows=4, cols=2)
+            pwht_tbl.style = 'Table Grid'
+            pwht_data = [
+                ['Temperature', pwht_temp],
+                ['Time at Temperature', pwht_time],
+                ['Other', pwht_other],
+            ]
+            for i, row_data in enumerate(pwht_data):
+                cell = pwht_tbl.rows[i].cells[0]
+                cell.text = row_data[0]
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(7)
+                cell = pwht_tbl.rows[i].cells[1]
+                cell.text = str(row_data[1]) if row_data[1] else ''
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(7)
+
+            document.add_paragraph()
+
+            # ── Procedure ──
+            document.add_paragraph('PROCEDURE', style='Heading 2')
+            proc_tbl = document.add_table(rows=1, cols=2)
+            proc_tbl.style = 'Table Grid'
+            proc_data = [
+                ['Weld Layer(s)', weld_layers],
+                ['Weld Pass(es)', weld_passes],
+                ['Process', process],
+                ['Type', process_type],
+                ['Position', position],
+                ['Vertical Progression', vertical_prog],
+                ['Filler Metal (AWS Spec.)', filler_spec],
+                ['AWS Classification', aws_class],
+                ['Diameter', electrode_dia],
+                ['Manufacturer/Trade Name', manufacturer],
+                ['Shielding Gas Composition', shielding_gas_comp],
+                ['Flow Rate', shielding_gas_flow],
+                ['Nozzle Size', nozzle_size],
+                ['Preheat Temperature', preheat_temp],
+                ['Interpass Temperature', interpass_temp],
+                ['Contact Tube to Work Distance', contact_tube_dist],
+            ]
+            for _ in proc_data:
+                proc_tbl.add_row()
+            for i, row_data in enumerate(proc_data):
+                cell = proc_tbl.rows[i].cells[0]
+                cell.text = row_data[0]
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(7)
+                cell = proc_tbl.rows[i].cells[1]
+                cell.text = str(row_data[1]) if row_data[1] else ''
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(7)
+
+            document.add_paragraph()
+
+            # ── Electrical Characteristics (per pass) ──
+            document.add_paragraph('ELECTRICAL CHARACTERISTICS', style='Heading 2')
+            for p in range(1, num_passes + 1):
+                document.add_paragraph(f'Pass {p}:', style='List Bullet')
+                elec_data = pass_data_elec.get(p, {})
+                p_data = [
+                    ['Current Type & Polarity', elec_data.get('current_polarity', '')],
+                    ['Transfer Mode', elec_data.get('transfer_mode', '')],
+                    ['Power Source Type', elec_data.get('power_source_type', '')],
+                    ['Amps', elec_data.get('amps', '')],
+                    ['Volts', elec_data.get('volts', '')],
+                    ['Wire Feed Speed', elec_data.get('wire_feed', '')],
+                    ['Travel Speed', elec_data.get('travel_speed', '')],
+                    ['Maximum Heat Input', elec_data.get('max_heat_input', '')],
+                ]
+                elec_tbl = document.add_table(rows=len(p_data), cols=2)
+                elec_tbl.style = 'Table Grid'
+                for i, row_data in enumerate(p_data):
+                    cell = elec_tbl.rows[i].cells[0]
+                    cell.text = row_data[0]
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.bold = True
+                            run.font.size = Pt(7)
+                    cell = elec_tbl.rows[i].cells[1]
+                    cell.text = str(row_data[1]) if row_data[1] else ''
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
+
+            document.add_paragraph()
+
+            # ── Technique (per pass) ──
+            document.add_paragraph('TECHNIQUE', style='Heading 2')
+            for p in range(1, num_passes + 1):
+                document.add_paragraph(f'Pass {p}:', style='List Bullet')
+                tech_data = pass_data_tech.get(p, {})
+                t_data = [
+                    ['Stringer or Weave', tech_data.get('stringer_weave', '')],
+                    ['Multi or Single Pass', tech_data.get('multi_single', '')],
+                    ['Oscillation', tech_data.get('oscillation', '')],
+                    ['Traverse Length', tech_data.get('traverse_length', '')],
+                    ['Traverse Speed', tech_data.get('traverse_speed', '')],
+                    ['Dwell Time', tech_data.get('dwell_time', '')],
+                    ['Number of Electrodes', tech_data.get('num_electrodes', '')],
+                    ['Peening', tech_data.get('peening', '')],
+                    ['Interpass Cleaning', tech_data.get('interpass_cleaning', '')],
+                ]
+                tech_tbl = document.add_table(rows=len(t_data), cols=2)
+                tech_tbl.style = 'Table Grid'
+                for i, row_data in enumerate(t_data):
+                    cell = tech_tbl.rows[i].cells[0]
+                    cell.text = row_data[0]
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.bold = True
+                            run.font.size = Pt(7)
+                    cell = tech_tbl.rows[i].cells[1]
+                    cell.text = str(row_data[1]) if row_data[1] else ''
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
+
+            document.add_paragraph()
+
+            # ── Footer ──
             footer_para = document.add_paragraph()
             footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = footer_para.add_run(
                 'Form J-2 | AWS D1.1/D1.1M:2020 Annex J | '
-                'Generated by Welding Engineering Toolbox | '
-                'Verify against current standard edition')
-            run.font.size = Pt(7)
-            run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+                'Generated by Welding Engineering Toolbox')
+            run.font.size = Pt(6)
+            run.font.italic = True
 
             document.save(docx_buffer)
             docx_buffer.seek(0)
@@ -1527,6 +1733,279 @@ with tab10:
 
         except Exception as e:
             st.error(f"❌ Error generating Word document: {str(e)}")
+
+    # ════════════════════════════════════════════════════════
+    # LATEX PDF GENERATION (Clean B&W AWS Form J-2 Layout)
+    # ════════════════════════════════════════════════════════
+    if generate_latex:
+        try:
+            import requests, io
+
+            def _esc(text):
+                """Escape special LaTeX characters."""
+                s = str(text) if text else "---"
+                for ch in ['\\', '&', '%', '$', '#', '_', '{', '}', '~', '^']:
+                    s = s.replace(ch, '\\' + ch)
+                return s
+
+            # ── Build LaTeX source (LETTER, B&W, clean form layout) ──
+            latex_src = r"""\documentclass[letterpaper,10pt]{article}
+\usepackage[margin=0.5in]{geometry}
+\usepackage{booktabs,tabularx,colortbl,xcolor,array,graphicx}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{fancyhdr}
+
+% ── Page style ──
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyfoot[C]{\scriptsize Form J-2 \quad AWS D1.1/D1.1M:2020 --- Annex J}
+
+\setlength{\parindent}{0pt}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+
+\begin{document}
+
+% ══════════════════════════  HEADER  ══════════════════════════
+\noindent
+\begin{tabularx}{\textwidth}{|X|X|}
+\hline
+\textbf{ANNEX J} & \textbf{AWS D1.1/D1.1M:2020} \\
+\hline
+\end{tabularx}
+
+\vspace{6pt}
+
+% ══════════════════════════  TITLE  ══════════════════════════
+\begin{center}
+\textbf{Blank Sample WPS Form (GMAW \& FCAW)}\\
+\textbf{WELDING PROCEDURE SPECIFICATION (WPS)}
+\end{center}
+
+\vspace{6pt}
+
+% ══════════════════════════  DOCUMENT HEADER  ══════════════════════════
+\noindent
+\begin{tabularx}{\textwidth}{|X|X|X|X|X|X|X|X|}
+\hline
+""" + f"""\\textbf{{Company Name}} & {_esc(company_name)} & \\textbf{{WPS No.}} & {_esc(wps_number)} & \\textbf{{Rev. No.}} & {_esc(rev_number)} & \\textbf{{Date}} & {_esc(str(wps_date))} \\\\
+\\hline
+\\textbf{{Authorized by}} & {_esc(authorized_by)} & \\textbf{{Date}} & {_esc(str(auth_date))} & \\textbf{{Supporting PQR(s)}} & {_esc(supporting_pqr)} & \\textbf{{CVN Report}} & {_esc(cvn_report)} \\\\
+\\hline
+\\end{{tabularx}}
+
+\vspace{{4pt}}
+
+% ══════════════════════════  BASE METALS  ══════════════════════════
+\\noindent
+\\begin{{tabularx}}{{\\textwidth}}{{|X|X|X|X|}}
+\\hline
+\\multicolumn{{4}}{{|X|}}{{\\textbf{{BASE METALS}}}} \\\\
+\\hline
+\\textbf{{Specification}} & {_esc(bm_spec)} & \\textbf{{Type or Grade}} & {_esc(bm_type_grade)} \\\\
+\\hline
+\\textbf{{AWS Group No.}} & {_esc(bm_aws_group)} & \\textbf{{Welded To}} & {_esc(bm_welded_to)} \\\\
+\\hline
+\\textbf{{Backing Material}} & {_esc(bm_backing)} & \\textbf{{Diameter}} & {_esc(bm_diameter)} \\\\
+\\hline
+\\end{{tabularx}}
+
+\\noindent
+\\begin{{tabularx}}{{\\textwidth}}{{|X|X|X|}}
+\\hline
+\\multicolumn{{3}}{{|X|}}{{\\textbf{{BASE METAL THICKNESS}}}} \\\\
+\\hline
+\\textbf{{Weld Type}} & \\textbf{{As-Welded}} & \\textbf{{With PWHT}} \\\\
+\\hline
+CJP Groove Welds & {_esc(thick_cjp_aw)} & {_esc(thick_cjp_pwht)} \\\\
+\\hline
+CJP Groove w/CVN & {_esc(thick_cjp_cvn_aw)} & {_esc(thick_cjp_cvn_pwht)} \\\\
+\\hline
+PJP Groove Welds & {_esc(thick_pjp_aw)} & {_esc(thick_pjp_pwht)} \\\\
+\\hline
+Fillet Welds & {_esc(thick_fillet_aw)} & {_esc(thick_fillet_pwht)} \\\\
+\\hline
+\\end{{tabularx}}
+
+\\vspace{{4pt}}
+
+% ══════════════════════════  JOINT DETAILS  ══════════════════════════
+\\noindent
+\\begin{{tabularx}}{{0.48\\textwidth}}{{|X|X|}}
+\\hline
+\\multicolumn{{2}}{{|X|}}{{\\textbf{{JOINT DETAILS}}}} \\\\
+\\hline
+\\textbf{{Groove Type}} & {_esc(groove_type)} \\\\
+\\hline
+\\textbf{{Groove Angle}} & {_esc(groove_angle)} \\\\
+\\hline
+\\textbf{{Root Opening}} & {_esc(root_opening)} \\\\
+\\hline
+\\textbf{{Root Face}} & {_esc(root_face)} \\\\
+\\hline
+\\textbf{{Backgouging}} & {_esc(backgouging)} \\\\
+\\hline
+\\textbf{{Method}} & {_esc(backgouging_method)} \\\\
+\\hline
+\\end{{tabularx}}
+\\hfill
+\\begin{{tabularx}}{{0.48\\textwidth}}{{|X|}}
+\\hline
+\\textbf{{JOINT DETAILS (Sketch)}} \\\\
+\\hline
+\\mbox{{}} \\\\
+\\mbox{{}} \\\\
+\\mbox{{}} \\\\
+\\mbox{{}} \\\\
+\\mbox{{}} \\\\
+\\mbox{{}} \\\\
+\\hline
+\\end{{tabularx}}
+
+\\vspace{{4pt}}
+
+% ══════════════════════════  POSTWELD HEAT TREATMENT  ══════════════════════════
+\\noindent
+\\begin{{tabularx}}{{\\textwidth}}{{|X|X|X|}}
+\\hline
+\\multicolumn{{3}}{{|X|}}{{\\textbf{{POSTWELD HEAT TREATMENT}}}} \\\\
+\\hline
+\\textbf{{Temperature}} & \\textbf{{Time at Temperature}} & \\textbf{{Other}} \\\\
+\\hline
+{_esc(pwht_temp)} & {_esc(pwht_time)} & {_esc(pwht_other)} \\\\
+\\hline
+\\end{{tabularx}}
+
+\\vspace{{4pt}}
+
+% ══════════════════════════  PROCEDURE (Multi-pass)  ══════════════════════════
+\\noindent
+\\textbf{{PROCEDURE}} (Weld Layer(s): {_esc(weld_layers)}, Pass(es): {_esc(weld_passes)})
+
+\\smallskip
+
+\\noindent
+\\begin{{tabularx}}{{\\textwidth}}{{|X|X|X|X|}}
+\\hline
+\\multicolumn{{4}}{{|X|}}{{\\textbf{{PROCEDURE DETAILS}}}} \\\\
+\\hline
+\\textbf{{Parameter}} & \\textbf{{Value}} & \\textbf{{Parameter}} & \\textbf{{Value}} \\\\
+\\hline
+Process & {_esc(process)} & Vertical Progression & {_esc(vertical_prog)} \\\\
+\\hline
+Type & {_esc(process_type)} & Position & {_esc(position)} \\\\
+\\hline
+Filler Metal (AWS) & {_esc(filler_spec)} & AWS Classification & {_esc(aws_class)} \\\\
+\\hline
+Diameter & {_esc(electrode_dia)} & Manufacturer & {_esc(manufacturer)} \\\\
+\\hline
+Shielding Gas & {_esc(shielding_gas_comp)} & Flow Rate & {_esc(shielding_gas_flow)} \\\\
+\\hline
+Nozzle Size & {_esc(nozzle_size)} & Preheat Temp. & {_esc(preheat_temp)} \\\\
+\\hline
+Interpass Temp. & {_esc(interpass_temp)} & Contact Tube to Work & {_esc(contact_tube_dist)} \\\\
+\\hline
+\\end{{tabularx}}
+
+\\vspace{{4pt}}
+
+% ══════════════════════════  ELECTRICAL (Per-pass)  ══════════════════════════
+\\noindent
+\\textbf{{ELECTRICAL CHARACTERISTICS}}
+
+\\smallskip
+\\noindent
+\\begin{{tabularx}}{{\\textwidth}}{{|X|X|X|X|X|X|}}
+\\hline
+\\textbf{{Parameter}} & \\textbf{{Pass 1}} & \\textbf{{Pass 2}} & \\textbf{{Pass 3}} & \\textbf{{Pass 4}} & \\textbf{{Pass 5}} \\\\
+\\hline
+Current Type & {_esc(pass_data_elec.get(1, {}).get('current_polarity', ''))} & {_esc(pass_data_elec.get(2, {}).get('current_polarity', ''))} & {_esc(pass_data_elec.get(3, {}).get('current_polarity', ''))} & {_esc(pass_data_elec.get(4, {}).get('current_polarity', ''))} & {_esc(pass_data_elec.get(5, {}).get('current_polarity', ''))} \\\\
+\\hline
+Transfer Mode & {_esc(pass_data_elec.get(1, {}).get('transfer_mode', ''))} & {_esc(pass_data_elec.get(2, {}).get('transfer_mode', ''))} & {_esc(pass_data_elec.get(3, {}).get('transfer_mode', ''))} & {_esc(pass_data_elec.get(4, {}).get('transfer_mode', ''))} & {_esc(pass_data_elec.get(5, {}).get('transfer_mode', ''))} \\\\
+\\hline
+Amps & {_esc(pass_data_elec.get(1, {}).get('amps', ''))} & {_esc(pass_data_elec.get(2, {}).get('amps', ''))} & {_esc(pass_data_elec.get(3, {}).get('amps', ''))} & {_esc(pass_data_elec.get(4, {}).get('amps', ''))} & {_esc(pass_data_elec.get(5, {}).get('amps', ''))} \\\\
+\\hline
+Volts & {_esc(pass_data_elec.get(1, {}).get('volts', ''))} & {_esc(pass_data_elec.get(2, {}).get('volts', ''))} & {_esc(pass_data_elec.get(3, {}).get('volts', ''))} & {_esc(pass_data_elec.get(4, {}).get('volts', ''))} & {_esc(pass_data_elec.get(5, {}).get('volts', ''))} \\\\
+\\hline
+Wire Feed Speed & {_esc(pass_data_elec.get(1, {}).get('wire_feed', ''))} & {_esc(pass_data_elec.get(2, {}).get('wire_feed', ''))} & {_esc(pass_data_elec.get(3, {}).get('wire_feed', ''))} & {_esc(pass_data_elec.get(4, {}).get('wire_feed', ''))} & {_esc(pass_data_elec.get(5, {}).get('wire_feed', ''))} \\\\
+\\hline
+Travel Speed & {_esc(pass_data_elec.get(1, {}).get('travel_speed', ''))} & {_esc(pass_data_elec.get(2, {}).get('travel_speed', ''))} & {_esc(pass_data_elec.get(3, {}).get('travel_speed', ''))} & {_esc(pass_data_elec.get(4, {}).get('travel_speed', ''))} & {_esc(pass_data_elec.get(5, {}).get('travel_speed', ''))} \\\\
+\\hline
+Max Heat Input & {_esc(pass_data_elec.get(1, {}).get('max_heat_input', ''))} & {_esc(pass_data_elec.get(2, {}).get('max_heat_input', ''))} & {_esc(pass_data_elec.get(3, {}).get('max_heat_input', ''))} & {_esc(pass_data_elec.get(4, {}).get('max_heat_input', ''))} & {_esc(pass_data_elec.get(5, {}).get('max_heat_input', ''))} \\\\
+\\hline
+\\end{{tabularx}}
+
+\\vspace{{4pt}}
+
+% ══════════════════════════  TECHNIQUE (Per-pass)  ══════════════════════════
+\\noindent
+\\textbf{{TECHNIQUE}}
+
+\\smallskip
+\\noindent
+\\begin{{tabularx}}{{\\textwidth}}{{|X|X|X|X|X|X|}}
+\\hline
+\\textbf{{Parameter}} & \\textbf{{Pass 1}} & \\textbf{{Pass 2}} & \\textbf{{Pass 3}} & \\textbf{{Pass 4}} & \\textbf{{Pass 5}} \\\\
+\\hline
+Stringer/Weave & {_esc(pass_data_tech.get(1, {}).get('stringer_weave', ''))} & {_esc(pass_data_tech.get(2, {}).get('stringer_weave', ''))} & {_esc(pass_data_tech.get(3, {}).get('stringer_weave', ''))} & {_esc(pass_data_tech.get(4, {}).get('stringer_weave', ''))} & {_esc(pass_data_tech.get(5, {}).get('stringer_weave', ''))} \\\\
+\\hline
+Multi/Single Pass & {_esc(pass_data_tech.get(1, {}).get('multi_single', ''))} & {_esc(pass_data_tech.get(2, {}).get('multi_single', ''))} & {_esc(pass_data_tech.get(3, {}).get('multi_single', ''))} & {_esc(pass_data_tech.get(4, {}).get('multi_single', ''))} & {_esc(pass_data_tech.get(5, {}).get('multi_single', ''))} \\\\
+\\hline
+Oscillation & {_esc(pass_data_tech.get(1, {}).get('oscillation', ''))} & {_esc(pass_data_tech.get(2, {}).get('oscillation', ''))} & {_esc(pass_data_tech.get(3, {}).get('oscillation', ''))} & {_esc(pass_data_tech.get(4, {}).get('oscillation', ''))} & {_esc(pass_data_tech.get(5, {}).get('oscillation', ''))} \\\\
+\\hline
+Traverse Length & {_esc(pass_data_tech.get(1, {}).get('traverse_length', ''))} & {_esc(pass_data_tech.get(2, {}).get('traverse_length', ''))} & {_esc(pass_data_tech.get(3, {}).get('traverse_length', ''))} & {_esc(pass_data_tech.get(4, {}).get('traverse_length', ''))} & {_esc(pass_data_tech.get(5, {}).get('traverse_length', ''))} \\\\
+\\hline
+Peening & {_esc(pass_data_tech.get(1, {}).get('peening', ''))} & {_esc(pass_data_tech.get(2, {}).get('peening', ''))} & {_esc(pass_data_tech.get(3, {}).get('peening', ''))} & {_esc(pass_data_tech.get(4, {}).get('peening', ''))} & {_esc(pass_data_tech.get(5, {}).get('peening', ''))} \\\\
+\\hline
+Interpass Cleaning & {_esc(pass_data_tech.get(1, {}).get('interpass_cleaning', ''))} & {_esc(pass_data_tech.get(2, {}).get('interpass_cleaning', ''))} & {_esc(pass_data_tech.get(3, {}).get('interpass_cleaning', ''))} & {_esc(pass_data_tech.get(4, {}).get('interpass_cleaning', ''))} & {_esc(pass_data_tech.get(5, {}).get('interpass_cleaning', ''))} \\\\
+\\hline
+\\end{{tabularx}}
+
+\\vspace{{10pt}}
+
+\\end{{document}}
+"""
+
+            with st.spinner("⏳ Compiling LaTeX via latex.ytotech.com …"):
+                resp = requests.post(
+                    "https://latex.ytotech.com/builds/sync",
+                    json={
+                        "compiler": "pdflatex",
+                        "resources": [
+                            {
+                                "main": True,
+                                "content": latex_src
+                            }
+                        ]
+                    },
+                    timeout=60
+                )
+
+            if resp.status_code in (200, 201) and resp.content[:5] == b"%PDF-":
+                st.success("✅ LaTeX PDF generated successfully!")
+                st.download_button(
+                    label="📥 Download LaTeX WPS PDF",
+                    data=resp.content,
+                    file_name=f"WPS_{wps_number}_{wps_date}_latex.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+            else:
+                error_detail = resp.text[:1000] if resp.text else "No response body"
+                st.error(f"❌ LaTeX compilation failed (HTTP {resp.status_code}).\n\n{error_detail}")
+                with st.expander("📄 View LaTeX source for debugging"):
+                    st.code(latex_src, language="latex")
+
+        except requests.exceptions.Timeout:
+            st.error("❌ LaTeX compilation timed out. The service may be busy — please try again.")
+        except Exception as e:
+            st.error(f"❌ Error generating LaTeX PDF: {str(e)}")
+            import traceback
+            with st.expander("Debug info"):
+                st.code(traceback.format_exc())
 
 st.divider()
 st.caption("📖 Reference: AWS D1.1/D1.1M:2025 — Clause 5 | For educational reference only. Always verify against the official published standard.")
